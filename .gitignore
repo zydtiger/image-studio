@@ -1,0 +1,46 @@
+# Python environments and generated files
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Frontend dependencies, builds, and test reports
+node_modules/
+*.tsbuildinfo
+src/image_studio/web/static/
+frontend/coverage/
+playwright-report/
+test-results/
+
+# Local configuration, credentials, model weights, and application data
+.env
+.env.*
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+outputs/
+inputs/
+trash/
+thumbnails/
+checkpoints/
+prompts/local/
+*.log
+
+# Editor-local files
+.idea/
+.vscode/
+.DS_Store
+
+# Local visual review artifacts
+.artifacts/

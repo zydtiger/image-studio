@@ -1,0 +1,203 @@
+/*
+ * Application shell: brand, primary navigation, and main content frame.
+ * Desktop renders a fixed sidebar; narrow viewports (<= 48em) collapse it
+ * into a top bar with a slide-in menu.
+ */
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  min-height: 100dvh;
+}
+
+.skip-link {
+  position: fixed;
+  top: var(--space-2);
+  left: var(--space-3);
+  z-index: var(--z-toast);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-accent-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  color: var(--color-accent);
+  font-weight: 500;
+  transform: translateY(-200%);
+}
+
+.skip-link:focus-visible {
+  transform: none;
+  text-decoration: none;
+}
+
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+
+.app-sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  padding: var(--space-5) var(--space-3);
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+}
+
+.app-sidebar .app-brand {
+  padding: 0 var(--space-3);
+}
+
+.app-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--space-6);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.nav-item:hover {
+  background: var(--color-surface-sunken);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.nav-item[aria-current="page"] {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.nav-item[aria-current="page"] .nav-icon {
+  color: var(--color-accent);
+}
+
+.nav-icon {
+  display: inline-flex;
+  color: var(--color-text-faint);
+  flex-shrink: 0;
+}
+
+.app-sidebar-footer {
+  margin-top: auto;
+  padding: var(--space-4) var(--space-3) 0;
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
+}
+
+.app-main {
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-8) var(--space-10);
+}
+
+.app-main:focus {
+  outline: none;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.page-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.page-header p {
+  color: var(--color-text-muted);
+  max-width: 60ch;
+}
+
+.placeholder-card {
+  padding: var(--space-8);
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-muted);
+  max-width: 46rem;
+}
+
+.app-topbar {
+  display: none;
+}
+
+.app-nav-scrim {
+  display: none;
+}
+
+@media (max-width: 48em) {
+  .app-shell {
+    display: block;
+  }
+
+  .app-topbar {
+    position: sticky;
+    top: 0;
+    z-index: var(--z-nav);
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: var(--topbar-height);
+    padding: 0 var(--space-2) 0 var(--space-1);
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .app-brand--compact {
+    font-size: var(--text-sm);
+  }
+
+  .app-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: var(--z-overlay);
+    width: min(17rem, 84vw);
+    height: 100dvh;
+    padding: var(--space-4) var(--space-3);
+    transform: translateX(-102%);
+    transition:
+      transform var(--transition-base),
+      visibility var(--transition-base);
+    visibility: hidden;
+    box-shadow: var(--shadow-3);
+  }
+
+  .app-sidebar[data-open="true"] {
+    transform: none;
+    visibility: visible;
+  }
+
+  .app-nav-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--z-overlay) - 1);
+    background: rgba(23, 27, 33, 0.4);
+  }
+
+  .app-nav-scrim[data-open="false"] {
+    display: none;
+  }
+
+  .app-main {
+    padding: var(--space-4) var(--space-4) var(--space-8);
+  }
+}

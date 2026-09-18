@@ -1,0 +1,11 @@
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/setupTests.ts"],
+    css: false,
+    include: ["src/**/*.test.{ts,tsx}"],
+    restoreMocks: true,
+  },
+});

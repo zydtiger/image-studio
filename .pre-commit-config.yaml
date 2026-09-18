@@ -1,0 +1,88 @@
+minimum_prek_version: "0.4.14"
+default_install_hook_types: [pre-commit, pre-push, commit-msg]
+default_stages: [pre-commit]
+
+repos:
+  - repo: builtin
+    hooks:
+      - id: check-added-large-files
+      - id: detect-private-key
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: check-json
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+      - id: require-pattern
+        name: commit subject
+        stages: [commit-msg]
+        args:
+          - --multiline
+          - '\A(feat|fix|docs|refactor|test|build|chore)(\([a-z0-9-]+\))?: [a-z]([^\r\n]*[^.\r\n])?$'
+
+  - repo: local
+    hooks:
+      - id: uv-lock-check
+        name: uv lock consistency
+        entry: uv lock --check
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|uv\.lock)$
+      - id: ruff-check
+        name: Python lint
+        entry: uv run --locked ruff check
+        language: system
+        pass_filenames: false
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: Python format
+        entry: uv run --locked ruff format
+        language: system
+        types_or: [python, pyi]
+      - id: backend-tests
+        name: backend tests
+        entry: uv run --locked pytest -q
+        language: system
+        pass_filenames: false
+        files: ^(src/image_studio/|tests/(unit|integration)/|pyproject\.toml)
+      - id: frontend-lint
+        name: frontend lint
+        entry: npm --prefix frontend run lint
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+      - id: frontend-format
+        name: frontend format check
+        entry: npm --prefix frontend run format:check
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+      - id: frontend-tests
+        name: frontend unit tests
+        entry: npm --prefix frontend run test
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+      - id: e2e-typecheck
+        name: e2e TypeScript typecheck
+        entry: npm --prefix tests/e2e run typecheck
+        language: system
+        pass_filenames: false
+        files: ^tests/e2e/
+      - id: e2e-test
+        name: e2e browser tests
+        entry: npm --prefix tests/e2e test
+        language: system
+        pass_filenames: false
+        files: ^tests/e2e/
+        stages: [pre-push]
+      - id: package-build
+        name: frontend typecheck and build, then Python package build
+        entry: sh -c 'npm --prefix frontend run build && uv build'
+        language: system
+        pass_filenames: false
+        files: '^(frontend/|src/|pyproject\.toml|uv\.lock|README\.md|\.pre-commit-config\.yaml)'
+        stages: [pre-push]
