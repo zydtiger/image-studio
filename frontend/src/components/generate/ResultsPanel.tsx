@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
-import { getRun, metadataUrl } from "../../api/generations";
-import type { RunDetail } from "../../api/types";
+import { getRun, metadataUrl, thumbnailUrl } from "../../api/generations";
+import type { ArtifactView, RunDetail, RunSummary } from "../../api/types";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
@@ -11,12 +11,20 @@ import { Spinner } from "../ui/Spinner";
 import { Lightbox } from "../media/Lightbox";
 import { usePolling } from "../../hooks/usePolling";
 import { formatDuration, formatRelativeTime } from "../../lib/format";
+import { cx } from "../../lib/cx";
 import {
   isRunActive,
   runStatusLabel,
   runStatusTone,
 } from "../../lib/statusTone";
 import { ImageTile } from "./ImageTile";
+
+/** Recent runs of the selected model, as fetched by the Generate page. */
+export interface ModelRunsView {
+  repoId: string;
+  runs: RunSummary[];
+  total: number;
+}
 
 function progressPercent(run: RunDetail): number | null {
   const { progress } = run;
@@ -28,21 +36,105 @@ function progressPercent(run: RunDetail): number | null {
 }
 
 /**
- * Follows one run: polls detail at 1 Hz while the run can still change,
- * shows progress, per-image results with seeds, and clear failure and
- * partial states. All data comes from the API.
+ * One recent run of the selected model: preview thumbnail (when the run
+ * produced images), status, and age. A real button inside the list item,
+ * so keyboard and assistive-tech button semantics stay intact.
+ */
+function ModelRunChip({
+  run,
+  selected,
+  onSelect,
+}: {
+  run: RunSummary;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const [broken, setBroken] = useState(false);
+  const hasPreview =
+    run.preview_artifact_id != null && run.completed_count > 0 && !broken;
+  return (
+    <button
+      type="button"
+      className={cx("model-run", selected && "model-run--selected")}
+      aria-pressed={selected}
+      aria-label={`View run from ${formatRelativeTime(run.created_at)}: ${run.prompt.slice(0, 80)}`}
+      title={run.prompt}
+      onClick={onSelect}
+    >
+      <span className="model-run__preview">
+        {hasPreview ? (
+          <img
+            src={thumbnailUrl(run.run_id, run.preview_artifact_id as string)}
+            alt=""
+            loading="lazy"
+            onError={() => setBroken(true)}
+          />
+        ) : (
+          <span className="model-run__no-preview">
+            {run.completed_count}/{run.image_count}
+          </span>
+        )}
+      </span>
+      <span className="model-run__meta">
+        <Badge tone={runStatusTone(run.status)}>
+          {runStatusLabel(run.status)}
+        </Badge>
+        <span>{formatRelativeTime(run.created_at)}</span>
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Results of the selected model: a compact list of its recent runs (newest
+ * first, thumbnails and status, Load more for older ones) above the followed
+ * run's detail — progress, per-image results with seeds, and clear failure
+ * and partial states. All data comes from the API.
  *
  * The fetched record is keyed by run id: switching `runId` derives an
  * empty view immediately and re-keys the polling schedule (aborting the
  * in-flight request for the old run and fetching the new one at once),
- * and late responses or errors for a previous run are ignored.
+ * and late responses or errors for a previous run are ignored. An
+ * authoritative record pushed through `runUpdate` (queue cancellation)
+ * applies to the followed run promptly, and a stale in-flight read that
+ * left the server before a terminal observation can no longer
+ * resurrect the run as still active.
+ *
+ * The model-scoped run list is optional; without it the panel renders the
+ * followed run only. The Generate page passes list data that is already
+ * repo-guarded, so a straggler response for another model never reaches
+ * this component.
  */
 export function ResultsPanel({
   runId,
   onClear,
+  runUpdate,
+  modelRuns,
+  modelRunsLoading,
+  modelRunsError,
+  onSelectRun,
+  onRetryModelRuns,
+  onLoadMoreModelRuns,
+  onRunSettled,
 }: {
   runId: string | null;
   onClear: () => void;
+  /** Authoritative run record pushed from the queue's cancel response. */
+  runUpdate?: { seq: number; run: RunDetail } | null;
+  /** Recent runs of the selected model; omit for the run-only panel. */
+  modelRuns?: ModelRunsView;
+  modelRunsLoading?: boolean;
+  modelRunsError?: unknown;
+  onSelectRun?: (runId: string) => void;
+  onRetryModelRuns?: () => void;
+  onLoadMoreModelRuns?: () => void;
+  /**
+   * Fired once per follow when the followed run is observed terminal —
+   * whether by transitioning from an active state or by a first read that
+   * already reports a terminal status — so the page can refresh the
+   * model's run list precisely when generation finishes.
+   */
+  onRunSettled?: (run: RunDetail) => void;
 }) {
   const [record, setRecord] = useState<{
     runId: string;
@@ -53,6 +145,42 @@ export function ResultsPanel({
     runId: string;
     artifactId: string;
   } | null>(null);
+  const [appliedUpdateSeq, setAppliedUpdateSeq] = useState(0);
+  // The latest selected run id, so a straggler read for a previous run
+  // (resolved just after its abort raced with completion) can never
+  // clobber the current selection's record.
+  const selectedRunIdRef = useRef<string | null>(runId);
+  useEffect(() => {
+    selectedRunIdRef.current = runId;
+  }, [runId]);
+
+  // Apply each pushed record once, and only for the followed run: cancelling
+  // another row must not change the selection's view. A delayed response
+  // that still reports the run active cannot revert a terminal observation
+  // — the same guard the polling path applies.
+  useEffect(() => {
+    if (
+      runUpdate === undefined ||
+      runUpdate === null ||
+      runUpdate.seq <= appliedUpdateSeq ||
+      runUpdate.run.run_id !== runId
+    ) {
+      return;
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- applying an externally pushed authoritative record
+    setAppliedUpdateSeq(runUpdate.seq);
+    setRecord((current) => {
+      if (
+        current?.runId === runUpdate.run.run_id &&
+        current.run !== undefined &&
+        !isRunActive(current.run.status) &&
+        isRunActive(runUpdate.run.status)
+      ) {
+        return current;
+      }
+      return { runId: runUpdate.run.run_id, run: runUpdate.run };
+    });
+  }, [runUpdate, appliedUpdateSeq, runId]);
 
   const live = record !== undefined && record.runId === runId;
   const run = live ? record.run : undefined;
@@ -73,7 +201,23 @@ export function ResultsPanel({
   usePolling(
     async (signal) => {
       const detail = await getRun(runId as string, signal);
-      setRecord({ runId: runId as string, run: detail });
+      if (selectedRunIdRef.current !== runId) {
+        return; // a straggler read for a previously selected run
+      }
+      setRecord((current) => {
+        // A read that left the server before a terminal observation (for
+        // example the cancel response) must not resurrect the run as
+        // still active; terminal states never revert.
+        if (
+          current?.runId === runId &&
+          current.run !== undefined &&
+          !isRunActive(current.run.status) &&
+          isRunActive(detail.status)
+        ) {
+          return current;
+        }
+        return { runId: runId as string, run: detail };
+      });
     },
     {
       activeIntervalMs: 1_000,
@@ -87,27 +231,136 @@ export function ResultsPanel({
     },
   );
 
-  if (runId === null) {
-    return (
-      <section className="panel results-panel" aria-label="Run results">
-        <header className="panel__header">
-          <h2>Results</h2>
-        </header>
-        <EmptyState
-          title="No run selected"
-          description="Submit a generation or select a queued run to follow its progress here."
-        />
-      </section>
-    );
-  }
+  // Report the followed run's terminal state exactly once per follow: a
+  // run first observed already terminal (it finished before the first read
+  // landed) reports just like one observed transitioning from active. The
+  // watch is keyed by run id and resets when nothing is followed, so
+  // re-selecting a run reports again but nothing fires repeatedly.
+  const settledWatch = useRef<{ runId: string; reported: boolean } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (run === undefined) {
+      settledWatch.current = null;
+      return;
+    }
+    if (onRunSettled === undefined) return;
+    const watch = settledWatch.current;
+    if (!isRunActive(run.status)) {
+      if (watch?.runId !== run.run_id || !watch.reported) {
+        onRunSettled(run);
+      }
+      settledWatch.current = { runId: run.run_id, reported: true };
+    } else {
+      settledWatch.current = { runId: run.run_id, reported: false };
+    }
+  }, [run, onRunSettled]);
 
-  if (run === undefined) {
-    return (
-      <section className="panel results-panel" aria-label="Run results">
-        <header className="panel__header">
-          <h2>Results</h2>
-        </header>
-        {loadError !== undefined ? (
+  const modelScoped =
+    modelRuns !== undefined ||
+    modelRunsLoading === true ||
+    modelRunsError !== undefined;
+  const hasSelectableRuns = (modelRuns?.runs.length ?? 0) > 0;
+
+  return (
+    <section className="panel results-panel" aria-label="Run results">
+      <header className="panel__header">
+        <h2>
+          Results
+          {modelRuns !== undefined ? (
+            <span className="panel__subtitle" title={modelRuns.repoId}>
+              {modelRuns.repoId}
+            </span>
+          ) : null}
+        </h2>
+        {runId !== null ? (
+          <div className="panel__header-actions">
+            <a
+              className="button button--secondary button--sm"
+              href={metadataUrl(runId)}
+              download
+            >
+              Metadata
+            </a>
+            <Button size="sm" variant="ghost" onClick={onClear}>
+              Clear
+            </Button>
+          </div>
+        ) : null}
+      </header>
+
+      {modelScoped ? (
+        <div className="model-runs">
+          {modelRunsError !== undefined ? (
+            <div className="model-runs__error" role="alert">
+              <p className="notice notice--error">
+                Runs of this model could not be loaded.
+              </p>
+              {onRetryModelRuns !== undefined ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={onRetryModelRuns}
+                >
+                  Retry
+                </Button>
+              ) : null}
+            </div>
+          ) : modelRuns === undefined ? (
+            <p className="model-runs__status">
+              <Spinner label="Loading runs" />
+            </p>
+          ) : modelRuns.runs.length === 0 ? (
+            <EmptyState
+              title="No runs yet"
+              description={`Runs generated with ${modelRuns.repoId} appear here.`}
+            />
+          ) : (
+            <>
+              <ul
+                className="model-runs__grid"
+                aria-label="Recent runs of this model"
+              >
+                {modelRuns.runs.map((summary) => (
+                  <li key={summary.run_id} className="model-runs__item">
+                    <ModelRunChip
+                      run={summary}
+                      selected={summary.run_id === runId}
+                      onSelect={() => onSelectRun?.(summary.run_id)}
+                    />
+                  </li>
+                ))}
+              </ul>
+              {modelRuns.runs.length < modelRuns.total &&
+              onLoadMoreModelRuns !== undefined ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="model-runs__more"
+                  onClick={onLoadMoreModelRuns}
+                >
+                  Load more ({modelRuns.runs.length} of {modelRuns.total})
+                </Button>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {runId === null ? (
+        hasSelectableRuns ? (
+          <EmptyState
+            title="No run selected"
+            description="Pick a run from the list above, or submit a generation to follow it here."
+          />
+        ) : modelScoped ? null : (
+          <EmptyState
+            title="No run selected"
+            description="Submit a generation or select a queued run to follow its progress here."
+          />
+        )
+      ) : run === undefined ? (
+        loadError !== undefined ? (
           <EmptyState
             title="Run unavailable"
             description="The run could not be loaded."
@@ -116,11 +369,33 @@ export function ResultsPanel({
           <p className="panel__body">
             <Spinner label="Loading run" />
           </p>
-        )}
-      </section>
-    );
-  }
+        )
+      ) : (
+        <RunDetailBody
+          run={run}
+          openArtifact={openArtifact}
+          onOpenArtifact={(artifactId) =>
+            setOpenArtifactId({ runId: run.run_id, artifactId })
+          }
+          onCloseArtifact={() => setOpenArtifactId(null)}
+        />
+      )}
+    </section>
+  );
+}
 
+/** The followed run's detail: summary, progress, images, and lightbox. */
+function RunDetailBody({
+  run,
+  openArtifact,
+  onOpenArtifact,
+  onCloseArtifact,
+}: {
+  run: RunDetail;
+  openArtifact: ArtifactView | undefined;
+  onOpenArtifact: (artifactId: string) => void;
+  onCloseArtifact: () => void;
+}) {
   const percent = progressPercent(run);
   const completed = run.images.filter(
     (image) => image.status === "completed",
@@ -134,33 +409,15 @@ export function ResultsPanel({
       : null;
 
   return (
-    <section className="panel results-panel" aria-label="Run results">
-      <header className="panel__header">
-        <h2>
-          Results
-          <span className="panel__subtitle">
-            run {run.run_id.slice(0, 8)} ·{" "}
-            {formatRelativeTime(Date.parse(run.created_at))}
-          </span>
-        </h2>
-        <div className="panel__header-actions">
-          <a
-            className="button button--secondary button--sm"
-            href={metadataUrl(run.run_id)}
-            download
-          >
-            Metadata
-          </a>
-          <Button size="sm" variant="ghost" onClick={onClear}>
-            Clear
-          </Button>
-        </div>
-      </header>
-
+    <>
       <div className="results-summary">
         <Badge tone={runStatusTone(run.status)}>
           {runStatusLabel(run.status)}
         </Badge>
+        <span className="results-summary__run">
+          run {run.run_id.slice(0, 8)}
+        </span>
+        <span>{formatRelativeTime(Date.parse(run.created_at))}</span>
         <span className="results-summary__model" title={run.repo_id}>
           {run.repo_id} · {run.profile}
         </span>
@@ -211,12 +468,7 @@ export function ResultsPanel({
               key={artifact.artifact_id}
               runId={run.run_id}
               artifact={artifact}
-              onOpen={(target) =>
-                setOpenArtifactId({
-                  runId: run.run_id,
-                  artifactId: target.artifact_id,
-                })
-              }
+              onOpen={(target) => onOpenArtifact(target.artifact_id)}
             />
           ))}
         </div>
@@ -232,14 +484,14 @@ export function ResultsPanel({
         image downloads.
       </p>
 
-      {openArtifact ? (
+      {openArtifact !== undefined ? (
         <Lightbox
           runId={run.run_id}
           artifact={openArtifact}
           imageCount={run.image_count}
-          onClose={() => setOpenArtifactId(null)}
+          onClose={onCloseArtifact}
         />
       ) : null}
-    </section>
+    </>
   );
 }

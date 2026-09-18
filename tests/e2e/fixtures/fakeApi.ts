@@ -1284,7 +1284,13 @@ export async function installFakeApi(
             model === null || model === "" ? true : run.repo_id === model,
           )
           .filter((run) => (favorite ? run.favorite : true))
-          .sort((a, b) => b.created_at.localeCompare(a.created_at));
+          // Newest first; the run id (which embeds the insertion counter)
+          // breaks created_at ties deterministically for seeded runs.
+          .sort(
+            (a, b) =>
+              b.created_at.localeCompare(a.created_at) ||
+              b.run_id.localeCompare(a.run_id),
+          );
         return jsonResponse(route, 200, {
           runs: filtered.slice(offset, offset + limit).map(summary),
           total: filtered.length,

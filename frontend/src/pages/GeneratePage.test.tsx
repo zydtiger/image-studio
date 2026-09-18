@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,6 +12,7 @@ import type {
   ModelRegistration,
   ProfileSpec,
   RunDetail,
+  RunSummary,
   SystemInfo,
 } from "../api/types";
 
@@ -176,6 +183,74 @@ function renderPage(runtime = residentRuntime("reg-base")) {
   );
 }
 
+function runSummary(overrides: Partial<RunSummary>): RunSummary {
+  return {
+    run_id: "run-aaaa0000",
+    created_at: new Date(Date.now() - 60_000).toISOString(),
+    status: "completed",
+    favorite: false,
+    trashed: false,
+    prompt: "a quiet harbor",
+    negative_prompt: null,
+    repo_id: "Tongyi-MAI/Z-Image",
+    profile: "z-image",
+    image_count: 2,
+    completed_count: 2,
+    preview_artifact_id: "image-001",
+    ...overrides,
+  };
+}
+
+function runDetail(overrides: Partial<RunDetail>): RunDetail {
+  return {
+    run_id: "run-aaaa0000",
+    created_at: new Date(Date.now() - 60_000).toISOString(),
+    started_at: null,
+    finished_at: null,
+    status: "completed",
+    favorite: false,
+    trashed: false,
+    registration_id: "reg-base",
+    repo_id: "Tongyi-MAI/Z-Image",
+    commit_sha: "aaaa1111",
+    profile: "z-image",
+    dtype: "bfloat16",
+    gpu: { uuid: "gpu-0", name: "RTX A" },
+    prompt: "a quiet harbor",
+    negative_prompt: null,
+    width: 1024,
+    height: 1024,
+    steps: 50,
+    guidance: 4,
+    initial_seed: 7,
+    image_count: 2,
+    pipeline_class: null,
+    dependency_versions: {},
+    runtime_meta: {},
+    queue_position: null,
+    progress: null,
+    error: null,
+    images: [],
+    ...overrides,
+  };
+}
+
+/** Newest-first in-memory backend for the selected-model run list. */
+function mockListModelRuns(history: RunSummary[]) {
+  generationsApi.listRuns.mockImplementation(
+    (params: { model?: string; limit?: number; offset?: number }) => {
+      const forModel = history.filter(
+        (entry) => entry.repo_id === params.model,
+      );
+      const offset = params.offset ?? 0;
+      return Promise.resolve({
+        runs: forModel.slice(offset, offset + (params.limit ?? 24)),
+        total: forModel.length,
+      });
+    },
+  );
+}
+
 async function waitForForm() {
   await screen.findByLabelText("Prompt");
   // Wait until the async defaults (model and GPU) have been applied.
@@ -190,12 +265,15 @@ async function waitForForm() {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   profilesApi.getProfiles.mockReset();
   modelsApi.listRegistrations.mockReset();
   systemApi.getSystem.mockReset();
   runtimeApi.getRuntime.mockReset();
   generationsApi.submitGeneration.mockReset();
   generationsApi.getRun.mockReset();
+  generationsApi.listRuns.mockReset();
+  generationsApi.listRuns.mockResolvedValue({ runs: [], total: 0 });
 });
 
 describe("GeneratePage", () => {
@@ -312,6 +390,99 @@ describe("GeneratePage", () => {
       count: 2,
     });
     expect(await screen.findByText(/run run-new1/i)).toBeInTheDocument();
+  });
+
+  it("propagates a terminal queue cancel to the followed run's results", async () => {
+    const queued: RunDetail = {
+      run_id: "run-new1",
+      created_at: "2026-09-16T00:00:00Z",
+      started_at: null,
+      finished_at: null,
+      status: "queued",
+      favorite: false,
+      trashed: false,
+      registration_id: "reg-base",
+      repo_id: "Tongyi-MAI/Z-Image",
+      commit_sha: "aaaa1111",
+      profile: "z-image",
+      dtype: "bfloat16",
+      gpu: { uuid: "gpu-0", name: "RTX A" },
+      prompt: "cancel me",
+      negative_prompt: null,
+      width: 1024,
+      height: 1024,
+      steps: 50,
+      guidance: 4,
+      initial_seed: 7,
+      image_count: 2,
+      pipeline_class: null,
+      dependency_versions: {},
+      runtime_meta: {},
+      queue_position: 1,
+      progress: null,
+      error: null,
+      images: [],
+    };
+    const cancelled: RunDetail = {
+      ...queued,
+      status: "cancelled",
+      finished_at: "2026-09-16T00:00:20Z",
+      error: null,
+    };
+    generationsApi.submitGeneration.mockResolvedValue(queued);
+    // The Results view's first read resolves; every later read hangs so
+    // only the propagated cancel response can update the view.
+    generationsApi.getRun.mockResolvedValueOnce(queued);
+    generationsApi.getRun.mockReturnValue(
+      new Promise<RunDetail>(() => undefined),
+    );
+    generationsApi.cancelRun.mockResolvedValue(cancelled);
+    renderPage();
+    // renderPage resets getQueue to an empty queue; the next 1 s poll
+    // carries the pending row.
+    generationsApi.getQueue.mockResolvedValue({
+      paused: false,
+      pending: [
+        {
+          run_id: "run-new1",
+          created_at: queued.created_at,
+          status: "queued",
+          favorite: false,
+          trashed: false,
+          prompt: "cancel me",
+          negative_prompt: null,
+          repo_id: "Tongyi-MAI/Z-Image",
+          profile: "z-image",
+          image_count: 2,
+          completed_count: 0,
+          preview_artifact_id: null,
+        },
+      ],
+    });
+
+    await waitForForm();
+    fireEvent.change(screen.getByLabelText("Prompt"), {
+      target: { value: "cancel me" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    expect(await screen.findByText(/run run-new1/i)).toBeInTheDocument();
+
+    const queuePanel = screen.getByLabelText("Generation queue");
+    const cancelButton = await within(queuePanel).findByRole(
+      "button",
+      {
+        name: "Cancel",
+      },
+      { timeout: 4_000 },
+    );
+    fireEvent.click(cancelButton);
+
+    // Queue row and followed-run Results both reflect the authoritative
+    // terminal response while the Results poll is still stalled.
+    await waitFor(() =>
+      expect(within(queuePanel).queryByText("cancel me")).toBeNull(),
+    );
+    expect(await screen.findByText("Cancelled")).toBeInTheDocument();
   });
 
   it("blocks submission on validation errors without calling the API", async () => {
@@ -619,5 +790,539 @@ describe("GeneratePage", () => {
     resolveRuntime(lateRuntime);
     await waitFor(() => expect(screen.getByText("RTX B")).toBeInTheDocument());
     expect(screen.getByLabelText("GPU")).toHaveValue("gpu-0");
+  });
+
+  it("lists only the selected model's runs and follows the newest", async () => {
+    mockListModelRuns([
+      runSummary({ run_id: "run-new1", prompt: "newest base run" }),
+      runSummary({
+        run_id: "run-old1",
+        prompt: "older base run",
+        created_at: new Date(Date.now() - 3_600_000).toISOString(),
+      }),
+      runSummary({
+        run_id: "run-turbo1",
+        prompt: "turbo run",
+        repo_id: "Tongyi-MAI/Z-Image-Turbo",
+        profile: "z-image-turbo",
+      }),
+    ]);
+    generationsApi.getRun.mockImplementation((runId: string) =>
+      Promise.resolve(runDetail({ run_id: runId })),
+    );
+    renderPage();
+
+    await waitForForm();
+    await waitFor(() =>
+      expect(generationsApi.listRuns).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "Tongyi-MAI/Z-Image", limit: 8 }),
+        expect.anything(),
+      ),
+    );
+    const results = screen.getByLabelText("Run results");
+    expect(
+      await within(results).findByTitle("newest base run"),
+    ).toBeInTheDocument();
+    expect(within(results).getByTitle("older base run")).toBeInTheDocument();
+    expect(within(results).queryByTitle("turbo run")).toBeNull();
+    expect(within(results).getAllByRole("listitem")).toHaveLength(2);
+
+    // The newest run of the selected model is followed by default.
+    await waitFor(() =>
+      expect(generationsApi.getRun).toHaveBeenCalledWith(
+        "run-new1",
+        expect.anything(),
+      ),
+    );
+    expect(
+      await within(results).findByText(/run run-new1/i),
+    ).toBeInTheDocument();
+  });
+
+  it("restores the persisted model and follows its newest run after a reload", async () => {
+    window.localStorage.setItem(
+      "image-studio.generate.registration-id",
+      "reg-turbo",
+    );
+    mockListModelRuns([
+      runSummary({
+        run_id: "run-turbo1",
+        prompt: "turbo newest",
+        repo_id: "Tongyi-MAI/Z-Image-Turbo",
+        profile: "z-image-turbo",
+      }),
+    ]);
+    generationsApi.getRun.mockImplementation((runId: string) =>
+      Promise.resolve(
+        runDetail({
+          run_id: runId,
+          repo_id: "Tongyi-MAI/Z-Image-Turbo",
+          profile: "z-image-turbo",
+        }),
+      ),
+    );
+    renderPage();
+
+    await waitForForm();
+    expect(screen.getByLabelText("Model")).toHaveValue("reg-turbo");
+    await waitFor(() =>
+      expect(generationsApi.listRuns).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "Tongyi-MAI/Z-Image-Turbo" }),
+        expect.anything(),
+      ),
+    );
+    await waitFor(() =>
+      expect(generationsApi.getRun).toHaveBeenCalledWith(
+        "run-turbo1",
+        expect.anything(),
+      ),
+    );
+    expect(
+      await within(screen.getByLabelText("Run results")).findByTitle(
+        "turbo newest",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("falls back to the default model when the stored registration is gone", async () => {
+    window.localStorage.setItem(
+      "image-studio.generate.registration-id",
+      "reg-removed",
+    );
+    renderPage();
+
+    await waitForForm();
+    expect(screen.getByLabelText("Model")).toHaveValue("reg-base");
+  });
+
+  it("switching models resets the selection to the new model's newest run", async () => {
+    mockListModelRuns([
+      runSummary({ run_id: "run-new1", prompt: "newest base run" }),
+      runSummary({
+        run_id: "run-turbo1",
+        prompt: "turbo newest",
+        repo_id: "Tongyi-MAI/Z-Image-Turbo",
+        profile: "z-image-turbo",
+      }),
+    ]);
+    generationsApi.getRun.mockImplementation((runId: string) =>
+      Promise.resolve(runDetail({ run_id: runId })),
+    );
+    renderPage();
+
+    await waitForForm();
+    const results = screen.getByLabelText("Run results");
+    await within(results).findByTitle("newest base run");
+    await waitFor(() =>
+      expect(generationsApi.getRun).toHaveBeenCalledWith(
+        "run-new1",
+        expect.anything(),
+      ),
+    );
+
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: { value: "reg-turbo" },
+    });
+
+    expect(
+      await within(results).findByTitle("turbo newest"),
+    ).toBeInTheDocument();
+    expect(within(results).queryByTitle("newest base run")).toBeNull();
+    await waitFor(() =>
+      expect(generationsApi.getRun).toHaveBeenCalledWith(
+        "run-turbo1",
+        expect.anything(),
+      ),
+    );
+    // The persisted preference follows the switch.
+    expect(
+      window.localStorage.getItem("image-studio.generate.registration-id"),
+    ).toBe("reg-turbo");
+  });
+
+  it("ignores a delayed run list for a previous model after switching", async () => {
+    const turboRuns = [
+      runSummary({
+        run_id: "run-turbo1",
+        prompt: "turbo prompt",
+        repo_id: "Tongyi-MAI/Z-Image-Turbo",
+        profile: "z-image-turbo",
+      }),
+    ];
+    let resolveBase!: (result: { runs: RunSummary[]; total: number }) => void;
+    generationsApi.listRuns.mockImplementation((params: { model?: string }) => {
+      if (params.model === "Tongyi-MAI/Z-Image-Turbo") {
+        return Promise.resolve({ runs: turboRuns, total: turboRuns.length });
+      }
+      return new Promise<{ runs: RunSummary[]; total: number }>((resolve) => {
+        resolveBase = resolve;
+      });
+    });
+    generationsApi.getRun.mockImplementation((runId: string) =>
+      Promise.resolve(runDetail({ run_id: runId })),
+    );
+    renderPage();
+
+    await waitForForm();
+    const results = screen.getByLabelText("Run results");
+    expect(within(results).getByText("Loading runs")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: { value: "reg-turbo" },
+    });
+    expect(
+      await within(results).findByTitle("turbo prompt"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(generationsApi.getRun).toHaveBeenCalledWith(
+        "run-turbo1",
+        expect.anything(),
+      ),
+    );
+
+    // The delayed base-model response lands after the switch: it must not
+    // repopulate the list or steal the selection back.
+    resolveBase({
+      runs: [runSummary({ run_id: "run-base1", prompt: "base prompt" })],
+      total: 1,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(within(results).queryByTitle("base prompt")).toBeNull();
+    expect(within(results).getByTitle("turbo prompt")).toBeInTheDocument();
+    expect(generationsApi.getRun).not.toHaveBeenCalledWith(
+      "run-base1",
+      expect.anything(),
+    );
+  });
+
+  it("shows an older run's detail when picked from the list", async () => {
+    mockListModelRuns([
+      runSummary({ run_id: "run-new1", prompt: "newest run" }),
+      runSummary({
+        run_id: "run-old1",
+        prompt: "older run",
+        created_at: new Date(Date.now() - 3_600_000).toISOString(),
+      }),
+    ]);
+    generationsApi.getRun.mockImplementation((runId: string) =>
+      Promise.resolve(
+        runDetail({
+          run_id: runId,
+          prompt: runId === "run-old1" ? "older run" : "newest run",
+          initial_seed: runId === "run-old1" ? 41 : 7,
+        }),
+      ),
+    );
+    renderPage();
+
+    await waitForForm();
+    const results = screen.getByLabelText("Run results");
+    await within(results).findByTitle("older run");
+    await waitFor(() =>
+      expect(generationsApi.getRun).toHaveBeenCalledWith(
+        "run-new1",
+        expect.anything(),
+      ),
+    );
+
+    fireEvent.click(within(results).getByTitle("older run"));
+
+    await waitFor(() =>
+      expect(generationsApi.getRun).toHaveBeenCalledWith(
+        "run-old1",
+        expect.anything(),
+      ),
+    );
+    expect(await within(results).findByText("seed 41")).toBeInTheDocument();
+    expect(within(results).getByTitle("older run")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(within(results).getByTitle("newest run")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("refreshes the run list when a generation finishes", async () => {
+    const history: RunSummary[] = [];
+    mockListModelRuns(history);
+    generationsApi.submitGeneration.mockResolvedValue(
+      runDetail({ run_id: "run-new1", prompt: "fresh run", status: "queued" }),
+    );
+    generationsApi.getRun.mockImplementation((runId: string) =>
+      Promise.resolve(runDetail({ run_id: runId, prompt: "fresh run" })),
+    );
+    renderPage();
+
+    await waitForForm();
+    fireEvent.change(screen.getByLabelText("Prompt"), {
+      target: { value: "fresh run" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await waitFor(() =>
+      expect(generationsApi.submitGeneration).toHaveBeenCalledOnce(),
+    );
+
+    // The finished run is now persisted; the next runtime poll still
+    // reports it as the worker's current run before the following one
+    // reports it cleared — that transition must refresh the list.
+    history.push(runSummary({ run_id: "run-new1", prompt: "fresh run" }));
+    runtimeApi.getRuntime.mockResolvedValueOnce({
+      ...residentRuntime("reg-base"),
+      state: "generating",
+      current_run_id: "run-new1",
+    });
+
+    const results = screen.getByLabelText("Run results");
+    const chip = await within(results).findByTitle(
+      "fresh run",
+      {},
+      { timeout: 5_000 },
+    );
+    expect(within(chip).getByText("Completed")).toBeInTheDocument();
+    // The submitted run stays followed.
+    expect(
+      await within(results).findByText(/run run-new1/i),
+    ).toBeInTheDocument();
+  });
+
+  it("loads older runs with bounded offset-keyed page requests", async () => {
+    const many = Array.from({ length: 30 }, (_, index) =>
+      runSummary({
+        run_id: `run-page${String(index).padStart(4, "0")}`,
+        prompt: `page run ${index}`,
+      }),
+    );
+    mockListModelRuns(many);
+    generationsApi.getRun.mockImplementation((runId: string) =>
+      Promise.resolve(runDetail({ run_id: runId })),
+    );
+    renderPage();
+
+    await waitForForm();
+    const results = screen.getByLabelText("Run results");
+    await within(results).findByTitle("page run 0");
+    expect(within(results).getAllByRole("listitem")).toHaveLength(8);
+    const more = within(results).getByRole("button", { name: /load more/i });
+    expect(more).toHaveTextContent("Load more (8 of 30)");
+
+    // Every page request stays at the page size and pages by offset, so
+    // no amount of Load more can exceed the API's limit ceiling.
+    for (let click = 0; click < 2; click += 1) {
+      fireEvent.click(
+        within(results).getByRole("button", { name: /load more/i }),
+      );
+      await waitFor(() =>
+        expect(within(results).getAllByRole("listitem")).toHaveLength(
+          8 * (click + 2),
+        ),
+      );
+      const lastCall = generationsApi.listRuns.mock.calls.at(-1)?.[0];
+      expect(lastCall).toMatchObject({
+        model: "Tongyi-MAI/Z-Image",
+        limit: 8,
+        offset: 8 * (click + 1),
+      });
+    }
+    expect(within(results).getAllByRole("listitem")).toHaveLength(24);
+    expect(
+      within(results).getByRole("button", { name: /load more/i }),
+    ).toHaveTextContent("Load more (24 of 30)");
+  });
+
+  it("clearing the detail keeps the run list without reselecting", async () => {
+    mockListModelRuns([
+      runSummary({ run_id: "run-new1", prompt: "newest run" }),
+      runSummary({
+        run_id: "run-old1",
+        prompt: "older run",
+        created_at: new Date(Date.now() - 3_600_000).toISOString(),
+      }),
+    ]);
+    generationsApi.getRun.mockImplementation((runId: string) =>
+      Promise.resolve(runDetail({ run_id: runId })),
+    );
+    renderPage();
+
+    await waitForForm();
+    const results = screen.getByLabelText("Run results");
+    expect(
+      await within(results).findByText(/run run-new1/i),
+    ).toBeInTheDocument();
+    // Following a terminal run reports once on first observation; let that
+    // refresh land before taking the idle baseline.
+    await waitFor(() =>
+      expect(generationsApi.listRuns.mock.calls.length).toBe(2),
+    );
+    const listRunsCalls = generationsApi.listRuns.mock.calls.length;
+    const getRunCalls = generationsApi.getRun.mock.calls.length;
+
+    fireEvent.click(within(results).getByRole("button", { name: "Clear" }));
+
+    expect(
+      await within(results).findByText("No run selected"),
+    ).toBeInTheDocument();
+    expect(within(results).getByTitle("newest run")).toBeInTheDocument();
+    expect(within(results).getByTitle("older run")).toBeInTheDocument();
+    // No auto-reselect and no idle refetch loop follows the clear.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(generationsApi.getRun.mock.calls.length).toBe(getRunCalls);
+    expect(generationsApi.listRuns.mock.calls.length).toBe(listRunsCalls);
+  });
+
+  it("refreshes the run list when the first detail read is already terminal", async () => {
+    // The run finishes before the first detail poll lands: the first read
+    // reports a terminal status, and the runtime never observes a current
+    // run — the list must still pick up the finished run.
+    const history: RunSummary[] = [];
+    mockListModelRuns(history);
+    generationsApi.submitGeneration.mockResolvedValue(
+      runDetail({ run_id: "run-new1", prompt: "quick run", status: "queued" }),
+    );
+    let releaseDetail: (runId: string) => void = () => undefined;
+    generationsApi.getRun.mockImplementation(
+      (_runId: string) =>
+        new Promise<RunDetail>((resolve) => {
+          releaseDetail = (id) =>
+            resolve(
+              runDetail({
+                run_id: id,
+                prompt: "quick run",
+                status: "completed",
+                finished_at: new Date().toISOString(),
+              }),
+            );
+        }),
+    );
+    renderPage();
+
+    await waitForForm();
+    fireEvent.change(screen.getByLabelText("Prompt"), {
+      target: { value: "quick run" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await waitFor(() =>
+      expect(generationsApi.submitGeneration).toHaveBeenCalledOnce(),
+    );
+
+    // The backend persists the finished run; once the panel's first detail
+    // poll is actually pending, resolve it with the terminal status.
+    history.push(runSummary({ run_id: "run-new1", prompt: "quick run" }));
+    await waitFor(() => expect(generationsApi.getRun).toHaveBeenCalled());
+    releaseDetail("run-new1");
+
+    const results = screen.getByLabelText("Run results");
+    const chip = await within(results).findByTitle(
+      "quick run",
+      {},
+      { timeout: 5_000 },
+    );
+    expect(within(chip).getByText("Completed")).toBeInTheDocument();
+    expect(
+      await within(results).findByText(/run run-new1/i),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps a newer model selection when a submission response arrives late", async () => {
+    mockListModelRuns([
+      runSummary({
+        run_id: "run-tur1",
+        prompt: "turbo newest",
+        repo_id: "Tongyi-MAI/Z-Image-Turbo",
+        profile: "z-image-turbo",
+      }),
+    ]);
+    let resolveSubmit!: (detail: RunDetail) => void;
+    generationsApi.submitGeneration.mockImplementation(
+      () =>
+        new Promise<RunDetail>((resolve) => {
+          resolveSubmit = resolve;
+        }),
+    );
+    generationsApi.getRun.mockImplementation((runId: string) =>
+      Promise.resolve(
+        runDetail({
+          run_id: runId,
+          repo_id: "Tongyi-MAI/Z-Image-Turbo",
+          profile: "z-image-turbo",
+        }),
+      ),
+    );
+    renderPage();
+
+    await waitForForm();
+    fireEvent.change(screen.getByLabelText("Prompt"), {
+      target: { value: "delayed base submission" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    // While the POST is in flight, the user switches models and the panel
+    // follows the new model's newest run.
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: { value: "reg-turbo" },
+    });
+    const results = screen.getByLabelText("Run results");
+    expect(
+      await within(results).findByText(/run run-tur1/i),
+    ).toBeInTheDocument();
+
+    resolveSubmit(
+      runDetail({
+        run_id: "run-late1",
+        prompt: "delayed base submission",
+        status: "queued",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Generate" })).toBeEnabled(),
+    );
+    // The late response belongs to the previous model: it must neither
+    // steal the selection nor leak its run into this model's list.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(within(results).getByText(/run run-tur1/i)).toBeInTheDocument();
+    expect(generationsApi.getRun).not.toHaveBeenCalledWith(
+      "run-late1",
+      expect.anything(),
+    );
+    expect(within(results).queryByTitle("delayed base submission")).toBeNull();
+  });
+
+  it("refreshes the run list when the worker replaces the current run directly", async () => {
+    mockListModelRuns([]);
+    generationsApi.getRun.mockImplementation((runId: string) =>
+      Promise.resolve(runDetail({ run_id: runId })),
+    );
+    renderPage();
+    // The runtime moves from run A straight to run B without a null
+    // observation in between; the list must still refresh. The override
+    // is installed after renderPage (which sets its own default) and the
+    // current run is flipped only once run A has actually been observed.
+    let workerRunId: string | null = "run-a";
+    let overridePolls = 0;
+    runtimeApi.getRuntime.mockImplementation(() => {
+      overridePolls += 1;
+      return Promise.resolve({
+        ...residentRuntime("reg-base"),
+        state: "generating",
+        current_run_id: workerRunId,
+      });
+    });
+
+    await waitForForm();
+    await waitFor(() => expect(overridePolls).toBeGreaterThan(0), {
+      timeout: 5_000,
+    });
+    workerRunId = "run-b";
+
+    const listRunsCalls = generationsApi.listRuns.mock.calls.length;
+    await waitFor(
+      () =>
+        expect(generationsApi.listRuns.mock.calls.length).toBeGreaterThan(
+          listRunsCalls,
+        ),
+      { timeout: 5_000 },
+    );
   });
 });

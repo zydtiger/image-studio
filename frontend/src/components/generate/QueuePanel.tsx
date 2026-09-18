@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import {
   cancelRun,
@@ -15,8 +15,12 @@ import { usePolling } from "../../hooks/usePolling";
 import { useRuntime } from "../../state/runtime/context";
 import { useToast } from "../../state/toast/context";
 import { errorMessage } from "../../api/client";
-import type { QueueState } from "../../api/types";
-import { runStatusLabel, runStatusTone } from "../../lib/statusTone";
+import type { QueueState, RunDetail } from "../../api/types";
+import {
+  isRunActive,
+  runStatusLabel,
+  runStatusTone,
+} from "../../lib/statusTone";
 
 /**
  * Global FIFO generation queue: paused-state banner with resume, the
@@ -25,20 +29,43 @@ import { runStatusLabel, runStatusTone } from "../../lib/statusTone";
  */
 export function QueuePanel({
   onFocusRun,
+  onRunCancelled,
 }: {
   onFocusRun: (runId: string) => void;
+  /** Receives every authoritative cancel response, terminal or not. */
+  onRunCancelled?: (run: RunDetail) => void;
 }) {
   const { runtime } = useRuntime();
   const toast = useToast();
   const [queue, setQueue] = useState<QueueState>();
   const [queueError, setQueueError] = useState<unknown>();
   const [refreshKey, setRefreshKey] = useState(0);
+  // Runs the server confirmed terminal through a cancel response. Reads
+  // that left the server before that confirmation must not resurrect them
+  // (terminal runs can never re-enter the queue or be current again), so a
+  // stale runtime current_run_id keeps the active row hidden too. The ref
+  // is read when a response resolves (stale-read filtering); the mirrored
+  // state drives render-time visibility.
+  const terminalRunIds = useRef<Set<string>>(new Set());
+  const [activeHiddenRunIds, setActiveHiddenRunIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const currentRunId = runtime?.current_run_id ?? null;
+  const activeVisible =
+    currentRunId !== null && !activeHiddenRunIds.has(currentRunId);
 
   usePolling(
     async (signal) => {
       const state = await getQueue(signal);
-      setQueue(state);
+      const hidden = terminalRunIds.current;
+      setQueue(
+        hidden.size === 0
+          ? state
+          : {
+              ...state,
+              pending: state.pending.filter((run) => !hidden.has(run.run_id)),
+            },
+      );
       setQueueError(undefined);
     },
     {
@@ -66,6 +93,53 @@ export function QueuePanel({
     } catch (error) {
       toast.pushToast({ kind: "error", message: errorMessage(error) });
     }
+  };
+
+  const onCancelRun = async (
+    runId: string,
+    context: { active: boolean; paused: boolean },
+  ) => {
+    let detail: RunDetail;
+    try {
+      detail = await cancelRun(runId);
+    } catch (error) {
+      toast.pushToast({ kind: "error", message: errorMessage(error) });
+      return;
+    }
+    // The response is authoritative: apply it directly instead of waiting
+    // for the next queue read, and hand it to the followed-run Results.
+    if (!isRunActive(detail.status)) {
+      terminalRunIds.current.add(detail.run_id);
+      setActiveHiddenRunIds((current) => new Set(current).add(detail.run_id));
+      setQueue((current) =>
+        current === undefined
+          ? current
+          : {
+              ...current,
+              pending: current.pending.filter(
+                (run) => run.run_id !== detail.run_id,
+              ),
+            },
+      );
+    }
+    setRefreshKey((current) => current + 1);
+    onRunCancelled?.(detail);
+    toast.pushToast({
+      kind: "info",
+      // Only a "cancelled" response may claim cancellation; a cooperative
+      // cancel that raced with natural completion reports the run already
+      // finished in its actual terminal state.
+      message:
+        detail.status === "cancelled"
+          ? context.paused
+            ? "Paused run cancelled."
+            : context.active
+              ? "Run cancelled."
+              : "Run removed from the queue."
+          : isRunActive(detail.status)
+            ? "Cancellation requested at the next safe boundary."
+            : `Run already finished (${runStatusLabel(detail.status).toLowerCase()}).`,
+    });
   };
 
   const pending = queue?.pending ?? [];
@@ -111,7 +185,7 @@ export function QueuePanel({
         )
       ) : null}
 
-      {currentRunId === null && pending.length === 0 ? (
+      {!activeVisible && pending.length === 0 ? (
         queue === undefined && queueError === undefined ? (
           <p className="panel__body">
             <Spinner label="Loading queue" />
@@ -124,7 +198,7 @@ export function QueuePanel({
         ) : null
       ) : (
         <ul className="queue-list">
-          {currentRunId !== null ? (
+          {activeVisible ? (
             <li className="queue-item queue-item--active">
               <div className="queue-item__main">
                 <span className="queue-item__title">
@@ -145,10 +219,10 @@ export function QueuePanel({
                   size="sm"
                   variant="secondary"
                   onClick={() =>
-                    void onRunAction(
-                      () => cancelRun(currentRunId),
-                      "Cancellation requested at the next safe boundary.",
-                    )
+                    void onCancelRun(currentRunId, {
+                      active: true,
+                      paused: false,
+                    })
                   }
                 >
                   Cancel
@@ -177,12 +251,10 @@ export function QueuePanel({
                   size="sm"
                   variant="secondary"
                   onClick={() =>
-                    void onRunAction(
-                      () => cancelRun(run.run_id),
-                      run.status === "paused"
-                        ? "Paused run cancelled."
-                        : "Run removed from the queue.",
-                    )
+                    void onCancelRun(run.run_id, {
+                      active: false,
+                      paused: run.status === "paused",
+                    })
                   }
                 >
                   Cancel

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RunDetail } from "../../api/types";
+import type { RunDetail, RunSummary } from "../../api/types";
 
 const generationsApi = vi.hoisted(() => ({
   getRun: vi.fn(),
@@ -25,7 +25,7 @@ vi.mock("../../api/generations", () => ({
   metadataUrl: (runId: string) => `/api/generations/${runId}/metadata`,
 }));
 
-import { ResultsPanel } from "./ResultsPanel";
+import { ResultsPanel, type ModelRunsView } from "./ResultsPanel";
 
 function run(overrides: Partial<RunDetail>): RunDetail {
   return {
@@ -245,6 +245,146 @@ describe("ResultsPanel", () => {
     );
   });
 
+  it("applies a pushed cancel record and ignores a stale in-flight read", async () => {
+    // The first read hangs until released: it left the server before the
+    // cancellation and still reports the run as queued.
+    let releaseStale: ((detail: RunDetail) => void) | undefined;
+    generationsApi.getRun.mockImplementationOnce(
+      () =>
+        new Promise<RunDetail>((resolve) => {
+          releaseStale = resolve;
+        }),
+    );
+    const view = (update?: { seq: number; run: RunDetail }) => (
+      <MemoryRouter>
+        <ResultsPanel
+          runId="run-1234abcdef"
+          onClear={vi.fn()}
+          runUpdate={update ?? null}
+        />
+      </MemoryRouter>
+    );
+    const { rerender } = render(view());
+
+    // The queue's authoritative terminal response arrives while the read
+    // is still in flight and applies at once.
+    rerender(
+      view({
+        seq: 1,
+        run: run({
+          status: "cancelled",
+          finished_at: "2026-09-16T00:00:20Z",
+          error: null,
+        }),
+      }),
+    );
+    expect(await screen.findByText("Cancelled")).toBeInTheDocument();
+
+    // The stale read resolves afterwards; it must not resurrect the run.
+    releaseStale?.(run({ status: "queued", started_at: null }));
+    await waitFor(() => expect(generationsApi.getRun).toHaveBeenCalledOnce());
+    expect(screen.getByText("Cancelled")).toBeInTheDocument();
+    expect(screen.queryByText("Queued")).toBeNull();
+  });
+
+  it("ignores a pushed record for a run other than the followed one", async () => {
+    generationsApi.getRun.mockResolvedValue(
+      run({ status: "queued", started_at: null }),
+    );
+    const view = (update?: { seq: number; run: RunDetail }) => (
+      <MemoryRouter>
+        <ResultsPanel
+          runId="run-1234abcdef"
+          onClear={vi.fn()}
+          runUpdate={update ?? null}
+        />
+      </MemoryRouter>
+    );
+    const { rerender } = render(view());
+    expect(await screen.findByText("Queued")).toBeInTheDocument();
+
+    rerender(
+      view({
+        seq: 1,
+        run: run({
+          run_id: "run-other0000",
+          status: "cancelled",
+          finished_at: "2026-09-16T00:00:20Z",
+        }),
+      }),
+    );
+
+    expect(screen.getByText("Queued")).toBeInTheDocument();
+    expect(screen.queryByText("Cancelled")).toBeNull();
+  });
+
+  it("does not revert a terminal observation for a delayed still-active cancel response", async () => {
+    // The GET poll already observed the terminal cancellation; a slow
+    // cooperative cancel response captured earlier still says "running"
+    // and must not revert the followed run.
+    generationsApi.getRun.mockResolvedValueOnce(
+      run({
+        status: "cancelled",
+        finished_at: "2026-09-16T00:00:20Z",
+        error: null,
+      }),
+    );
+    generationsApi.getRun.mockReturnValue(
+      new Promise<RunDetail>(() => undefined),
+    );
+    const view = (update?: { seq: number; run: RunDetail }) => (
+      <MemoryRouter>
+        <ResultsPanel
+          runId="run-1234abcdef"
+          onClear={vi.fn()}
+          runUpdate={update ?? null}
+        />
+      </MemoryRouter>
+    );
+    const { rerender } = render(view());
+    expect(await screen.findByText("Cancelled")).toBeInTheDocument();
+
+    rerender(
+      view({ seq: 1, run: run({ status: "running", finished_at: null }) }),
+    );
+
+    expect(screen.getByText("Cancelled")).toBeInTheDocument();
+    expect(screen.queryByText("Running")).toBeNull();
+  });
+
+  it("never lets a straggler read for a previous run clobber the current record", async () => {
+    // Run A's read resolves just after its abort raced with completion,
+    // while run B is already followed and loaded.
+    let resolveA: ((detail: RunDetail) => void) | undefined;
+    generationsApi.getRun.mockImplementationOnce(
+      (runId: string) =>
+        new Promise<RunDetail>((resolve) => {
+          resolveA = resolve;
+          void runId;
+        }),
+    );
+    generationsApi.getRun.mockResolvedValueOnce(
+      run({ run_id: "run-bbbb0000", status: "completed" }),
+    );
+    const view = (id: string | null) => (
+      <MemoryRouter>
+        <ResultsPanel runId={id} onClear={vi.fn()} runUpdate={null} />
+      </MemoryRouter>
+    );
+    const { rerender } = render(view("run-aaaa"));
+    rerender(view("run-bbbb"));
+    await waitFor(
+      () => expect(screen.getByText(/run run-bbbb/i)).toBeInTheDocument(),
+      { timeout: 4_000 },
+    );
+
+    resolveA?.(run({ run_id: "run-aaaa0000", status: "running" }));
+
+    await waitFor(() => expect(generationsApi.getRun).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(/run run-bbbb/i)).toBeInTheDocument();
+    expect(screen.queryByText("Loading run")).toBeNull();
+  });
+
   it("ignores a late response for a previous run after switching", async () => {
     let resolveFirst: (detail: RunDetail) => void = () => undefined;
     generationsApi.getRun.mockImplementationOnce(
@@ -316,5 +456,165 @@ describe("ResultsPanel", () => {
       ),
     );
     expect(await screen.findByText(/run run-cccc/i)).toBeInTheDocument();
+  });
+});
+
+function listSummary(overrides: Partial<RunSummary>): RunSummary {
+  return {
+    run_id: "run-aaaa0000",
+    created_at: new Date(Date.now() - 60_000).toISOString(),
+    status: "completed",
+    favorite: false,
+    trashed: false,
+    prompt: "a quiet harbor",
+    negative_prompt: null,
+    repo_id: "Tongyi-MAI/Z-Image",
+    profile: "z-image",
+    image_count: 2,
+    completed_count: 2,
+    preview_artifact_id: "image-001",
+    ...overrides,
+  };
+}
+
+describe("ResultsPanel model run list", () => {
+  const runs: RunSummary[] = [
+    listSummary({ run_id: "run-new1", prompt: "newest run" }),
+    listSummary({
+      run_id: "run-old1",
+      prompt: "older run",
+      status: "partial",
+      completed_count: 1,
+      created_at: new Date(Date.now() - 3_600_000).toISOString(),
+    }),
+  ];
+  const modelRuns: ModelRunsView = {
+    repoId: "Tongyi-MAI/Z-Image",
+    runs,
+    total: 5,
+  };
+
+  it("renders the model's runs with selection state and load more", () => {
+    const onSelectRun = vi.fn();
+    const onLoadMoreModelRuns = vi.fn();
+    const { container } = render(
+      <MemoryRouter>
+        <ResultsPanel
+          runId={null}
+          onClear={vi.fn()}
+          modelRuns={modelRuns}
+          onSelectRun={onSelectRun}
+          onLoadMoreModelRuns={onLoadMoreModelRuns}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Tongyi-MAI/Z-Image")).toBeInTheDocument();
+    expect(
+      screen.getByRole("list", { name: "Recent runs of this model" }),
+    ).toBeInTheDocument();
+    // Chips stay real buttons inside list items: button semantics and
+    // aria-pressed remain valid for assistive tech and keyboard use.
+    const chips = screen.getAllByRole("button", { name: /View run from/ });
+    expect(chips).toHaveLength(2);
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    const newest = screen.getByTitle("newest run");
+    expect(newest).toHaveAttribute("aria-pressed", "false");
+    // Partial runs with completed images stay listed with their preview.
+    expect(screen.getByTitle("older run")).toBeInTheDocument();
+    expect(container.querySelector("img")).toHaveAttribute(
+      "src",
+      "/api/generations/run-new1/artifacts/image-001/thumbnail",
+    );
+
+    fireEvent.click(newest);
+    expect(onSelectRun).toHaveBeenCalledWith("run-new1");
+
+    const more = screen.getByRole("button", { name: /load more/i });
+    expect(more).toHaveTextContent("Load more (2 of 5)");
+    fireEvent.click(more);
+    expect(onLoadMoreModelRuns).toHaveBeenCalledOnce();
+  });
+
+  it("marks the followed run in the list", () => {
+    render(
+      <MemoryRouter>
+        <ResultsPanel
+          runId="run-old1"
+          onClear={vi.fn()}
+          modelRuns={modelRuns}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTitle("older run")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByTitle("newest run")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("shows a spinner while the model's runs load and no empty-state stack", () => {
+    render(
+      <MemoryRouter>
+        <ResultsPanel runId={null} onClear={vi.fn()} modelRunsLoading={true} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Loading runs")).toBeInTheDocument();
+    expect(screen.queryByText("No run selected")).toBeNull();
+  });
+
+  it("shows an error with retry when the run list fails", () => {
+    const onRetryModelRuns = vi.fn();
+    render(
+      <MemoryRouter>
+        <ResultsPanel
+          runId={null}
+          onClear={vi.fn()}
+          modelRunsError={new Error("network down")}
+          onRetryModelRuns={onRetryModelRuns}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByText("Runs of this model could not be loaded."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetryModelRuns).toHaveBeenCalledOnce();
+  });
+
+  it("shows a single empty state when the model has no runs", () => {
+    render(
+      <MemoryRouter>
+        <ResultsPanel
+          runId={null}
+          onClear={vi.fn()}
+          modelRuns={{ repoId: "Tongyi-MAI/Z-Image", runs: [], total: 0 }}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("No runs yet")).toBeInTheDocument();
+    expect(screen.queryByText("No run selected")).toBeNull();
+  });
+
+  it("hints at picking a listed run when none is selected", () => {
+    render(
+      <MemoryRouter>
+        <ResultsPanel runId={null} onClear={vi.fn()} modelRuns={modelRuns} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("No run selected")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Pick a run from the list above, or submit a generation to follow it here.",
+      ),
+    ).toBeInTheDocument();
   });
 });

@@ -52,6 +52,40 @@ function pendingRun(overrides: Partial<RunSummary>): RunSummary {
   };
 }
 
+function runDetail(overrides: Partial<RunDetail>): RunDetail {
+  return {
+    run_id: "run-0001",
+    created_at: "2026-09-16T00:00:00Z",
+    started_at: "2026-09-16T00:00:05Z",
+    finished_at: "2026-09-16T00:00:09Z",
+    status: "cancelled",
+    favorite: false,
+    trashed: false,
+    registration_id: "reg-1",
+    repo_id: "Tongyi-MAI/Z-Image",
+    commit_sha: "abcdef123",
+    profile: "z-image",
+    dtype: "bfloat16",
+    gpu: { uuid: "gpu-0", name: "RTX A" },
+    prompt: "a quiet harbor",
+    negative_prompt: null,
+    width: 1024,
+    height: 1024,
+    steps: 9,
+    guidance: 0,
+    initial_seed: 5,
+    image_count: 2,
+    pipeline_class: null,
+    dependency_versions: {},
+    runtime_meta: {},
+    queue_position: null,
+    progress: null,
+    error: null,
+    images: [],
+    ...overrides,
+  };
+}
+
 function renderPanel(queue: QueueState, currentRunId: string | null = null) {
   generationsApi.getQueue.mockResolvedValue(queue);
   return renderPanelRaw(currentRunId);
@@ -92,7 +126,9 @@ describe("QueuePanel", () => {
   });
 
   it("lists pending runs and cancels them individually", async () => {
-    generationsApi.cancelRun.mockResolvedValue({});
+    generationsApi.cancelRun.mockResolvedValue(
+      runDetail({ run_id: "run-a", status: "cancelled" }),
+    );
     renderPanel({
       paused: false,
       pending: [
@@ -108,6 +144,96 @@ describe("QueuePanel", () => {
     await waitFor(() =>
       expect(generationsApi.cancelRun).toHaveBeenCalledWith("run-a"),
     );
+  });
+
+  it.each(["queued", "paused"] as const)(
+    "removes a cancelled %s row from the response and filters stale queue reads",
+    async (status) => {
+      generationsApi.getQueue.mockResolvedValueOnce({
+        paused: status === "paused",
+        pending: [
+          pendingRun({ run_id: "run-a", prompt: "first prompt", status }),
+          pendingRun({ run_id: "run-b", prompt: "second prompt", status }),
+        ],
+      });
+      // Every later queue read hangs until released with a payload that left
+      // the server before the cancellation and still lists run-a.
+      let releaseStale: ((state: QueueState) => void) | undefined;
+      const staleRead = new Promise<QueueState>((resolve) => {
+        releaseStale = resolve;
+      });
+      generationsApi.getQueue.mockReturnValue(staleRead);
+      generationsApi.cancelRun.mockResolvedValue(
+        runDetail({ run_id: "run-a", status: "cancelled" }),
+      );
+      renderPanelRaw();
+
+      expect(await screen.findByText("first prompt")).toBeInTheDocument();
+      fireEvent.click(screen.getAllByRole("button", { name: "Cancel" })[0]);
+      await waitFor(() =>
+        expect(generationsApi.cancelRun).toHaveBeenCalledWith("run-a"),
+      );
+
+      // The terminal response itself removes the row; no queue read has
+      // completed yet (the next one is still in flight).
+      await waitFor(() =>
+        expect(screen.queryByText("first prompt")).toBeNull(),
+      );
+      expect(screen.getByText("second prompt")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          status === "paused"
+            ? "Paused run cancelled."
+            : "Run removed from the queue.",
+        ),
+      ).toBeInTheDocument();
+
+      // The stale read resolves after the cancellation and must not
+      // resurrect the removed row.
+      releaseStale!({
+        paused: status === "paused",
+        pending: [
+          pendingRun({ run_id: "run-a", prompt: "first prompt", status }),
+          pendingRun({ run_id: "run-b", prompt: "second prompt", status }),
+        ],
+      });
+      await waitFor(() =>
+        expect(
+          generationsApi.getQueue.mock.calls.length,
+        ).toBeGreaterThanOrEqual(2),
+      );
+      await waitFor(() =>
+        expect(screen.queryByText("first prompt")).toBeNull(),
+      );
+      expect(screen.getByText("second prompt")).toBeInTheDocument();
+    },
+  );
+
+  it("keeps the row and never claims removal while the cancel response is still active", async () => {
+    generationsApi.getQueue.mockResolvedValue({
+      paused: false,
+      pending: [pendingRun({ run_id: "run-a", prompt: "still queued" })],
+    });
+    // Dispatch-race shape: the server answered with the run still queued,
+    // so nothing has been removed yet.
+    generationsApi.cancelRun.mockResolvedValue(
+      runDetail({ run_id: "run-a", status: "queued", error: null }),
+    );
+    renderPanelRaw();
+
+    expect(await screen.findByText("still queued")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Cancel" })[0]);
+    await waitFor(() =>
+      expect(generationsApi.cancelRun).toHaveBeenCalledWith("run-a"),
+    );
+
+    expect(
+      await screen.findByText(
+        /Cancellation requested at the next safe boundary/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Run removed from the queue.")).toBeNull();
+    expect(screen.getByText("still queued")).toBeInTheDocument();
   });
 
   it("offers resume for the paused queue after a restart", async () => {
@@ -219,5 +345,93 @@ describe("QueuePanel", () => {
     await waitFor(() =>
       expect(generationsApi.cancelRun).toHaveBeenCalledWith("run-live"),
     );
+  });
+
+  it("reports an already finished run truthfully on the active row", async () => {
+    // The cooperative cancellation raced with natural completion: the
+    // server answered with the unchanged completed detail.
+    generationsApi.getQueue.mockResolvedValue({ paused: false, pending: [] });
+    generationsApi.getRun.mockResolvedValue(
+      runDetail({
+        run_id: "run-live",
+        prompt: "active prompt",
+        status: "running",
+      }),
+    );
+    generationsApi.cancelRun.mockResolvedValue(
+      runDetail({
+        run_id: "run-live",
+        prompt: "active prompt",
+        status: "completed",
+        error: null,
+      }),
+    );
+    renderPanelRaw("run-live");
+
+    expect(await screen.findByText("active prompt")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(generationsApi.cancelRun).toHaveBeenCalledWith("run-live"),
+    );
+
+    expect(
+      await screen.findByText(/Run already finished \(completed\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Run cancelled.")).toBeNull();
+    expect(screen.queryByText(/Cancellation requested/i)).toBeNull();
+  });
+
+  it("reports an already finished run truthfully on a pending row", async () => {
+    generationsApi.getQueue.mockResolvedValueOnce({
+      paused: false,
+      pending: [pendingRun({ run_id: "run-a", prompt: "late finish" })],
+    });
+    generationsApi.cancelRun.mockResolvedValue(
+      runDetail({
+        run_id: "run-a",
+        prompt: "late finish",
+        status: "completed",
+      }),
+    );
+    renderPanelRaw();
+
+    expect(await screen.findByText("late finish")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Cancel" })[0]);
+    await waitFor(() =>
+      expect(generationsApi.cancelRun).toHaveBeenCalledWith("run-a"),
+    );
+
+    expect(
+      await screen.findByText(/Run already finished \(completed\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Run removed from the queue.")).toBeNull();
+  });
+
+  it("hides the active row on a terminal cancel response while the runtime is stale", async () => {
+    // The runtime poll stays frozen on the old current_run_id; the
+    // authoritative terminal response must remove the row anyway and the
+    // stale runtime must not resurrect it.
+    generationsApi.getQueue.mockResolvedValue({ paused: false, pending: [] });
+    generationsApi.getRun.mockResolvedValue(
+      runDetail({
+        run_id: "run-live",
+        prompt: "active prompt",
+        status: "running",
+      }),
+    );
+    generationsApi.cancelRun.mockResolvedValue(
+      runDetail({ run_id: "run-live", prompt: "active prompt" }),
+    );
+    renderPanelRaw("run-live");
+
+    expect(await screen.findByText("active prompt")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(generationsApi.cancelRun).toHaveBeenCalledWith("run-live"),
+    );
+
+    await waitFor(() => expect(screen.queryByText("active prompt")).toBeNull());
+    expect(screen.queryByText("Running")).toBeNull();
+    expect(screen.getByText("Run cancelled.")).toBeInTheDocument();
   });
 });

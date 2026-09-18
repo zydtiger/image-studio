@@ -116,20 +116,44 @@ test("cancels a queued run immediately", async ({ page, fakeApi }) => {
 
 test("cancels a running run cooperatively and keeps completed images", async ({
   page,
+  fakeApi,
 }) => {
   await expect(page.getByLabel("Prompt", { exact: true })).toBeVisible();
+  // The fake advances per HTTP poll, and submission triggers a burst of
+  // polls: one-image-per-tick would finish all four images inside the
+  // burst (a completed run, not a cooperative cancel). Ten steps per tick
+  // complete the first image only after the burst settles.
+  fakeApi!.setStepsPerTick(10);
   await page.getByLabel("Prompt", { exact: true }).fill("cancel me");
   await page.getByLabel("Images", { exact: true }).selectOption("4");
   await page.getByRole("button", { name: "Generate" }).click();
 
-  const running = page.getByText("Running").first();
-  await expect(running).toBeVisible({ timeout: 10_000 });
-  await page.getByRole("button", { name: "Cancel" }).last().click();
+  const results = page.getByLabel("Run results");
+  // At least one image completed while later images are still pending.
+  await expect(results.getByText(/[12]\/4 images/)).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Now the remaining images advance barely at all: the cancel below lands
+  // while the run is genuinely running (a bounded race — the slow pace
+  // leaves many seconds of margin). The exact match keeps the queue's
+  // Cancel button distinguishable from result-list chips whose accessible
+  // names embed the prompt ("cancel me").
+  fakeApi!.setStepsPerTick(1);
+  await page
+    .getByRole("button", { name: "Cancel", exact: true })
+    .last()
+    .click();
 
   await expect(page.getByText(/Cancellation requested/i)).toBeVisible();
+  await expect(page.getByText("Partial").first()).toBeVisible({
+    timeout: 15_000,
+  });
   await expect(page.getByText("Idle").first()).toBeVisible({
     timeout: 15_000,
   });
+  // The completed image(s) are kept in the partial run.
+  await expect(results.getByText(/[12]\/4 images/)).toBeVisible();
 });
 
 test("fails a run visibly on a worker error", async ({ page, fakeApi }) => {
