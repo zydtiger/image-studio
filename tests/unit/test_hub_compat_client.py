@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+from image_studio.hub.cache import snapshot_problems
 from image_studio.hub.client import HubClients
 from image_studio.hub.compatibility import check_compatibility, filter_files
 from image_studio.testing import FakeHub
@@ -82,6 +83,56 @@ def test_wrong_pipeline_class_rejected(tmp_path: Path) -> None:
     report = check_compatibility(_api_with_files(tmp_path, files).api, "test/repo", None)
     assert not report.structurally_compatible
     assert any("FluxPipeline" in finding for finding in report.findings)
+
+
+def test_bf16_only_remote_listing_compatible(tmp_path: Path) -> None:
+    from tests.unit.test_snapshot_validation import _bf16, _complete_files
+
+    report = check_compatibility(
+        _api_with_files(tmp_path, _bf16(_complete_files())).api, "test/repo", None
+    )
+    assert report.structurally_compatible
+    assert set(report.selectable_profiles) == {"z-image", "z-image-turbo"}
+
+
+def test_remote_mixed_layout_rejected_as_locally(tmp_path: Path) -> None:
+    """Regression: remote and local gates must agree on whole-layout choice.
+
+    text_encoder and transformer ship bf16 weights only while the vae file
+    uses the default name — the exact review reproduction. Per-component
+    any-variant acceptance calls this compatible; the shared deterministic
+    rule requires ONE complete variant across every weighted component.
+    """
+    from tests.unit.test_snapshot_validation import _bf16, _complete_files, _write
+
+    files = _bf16(_complete_files())
+    del files["vae/diffusion_pytorch_model.bf16.safetensors"]
+    files["vae/diffusion_pytorch_model.safetensors"] = b"weights"
+
+    report = check_compatibility(_api_with_files(tmp_path / "remote", files).api, "test/repo", None)
+    assert not report.structurally_compatible
+    findings = " ".join(report.findings)
+    assert "default weight layout incomplete: text_encoder" in findings
+    assert "default weight layout incomplete: transformer" in findings
+    assert "bf16 weight layout incomplete: vae" in findings
+
+    # The same files on disk are locally incomplete under the shared rule.
+    assert snapshot_problems(_write(tmp_path / "snap", files))
+
+
+def test_remote_weights_missing_in_all_layouts(tmp_path: Path) -> None:
+    files = _z_files()
+    for name in list(files):
+        if name.endswith(".safetensors") or name.endswith(".index.json"):
+            del files[name]
+    # Keep one weight file so the coarse safetensors gate passes and the
+    # shared per-component manifest rules produce the findings.
+    files["vae/diffusion_pytorch_model.safetensors"] = b"weights"
+    report = check_compatibility(_api_with_files(tmp_path, files).api, "test/repo", None)
+    assert not report.structurally_compatible
+    assert any(
+        "weights are missing" in finding and "bf16" in finding for finding in report.findings
+    )
 
 
 def test_filter_files_selects_formats_without_duplicates() -> None:

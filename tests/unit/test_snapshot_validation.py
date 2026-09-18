@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from image_studio.hub.cache import problem_codes, snapshot_problems
+from image_studio.hub.cache import problem_codes, snapshot_problems, snapshot_weight_variant
 from image_studio.schemas import ErrorCode
 
 
@@ -66,6 +66,136 @@ def test_unsharded_complete_variant_accepted(tmp_path: Path) -> None:
 def test_sharded_complete_variant_accepted(tmp_path: Path) -> None:
     root = _write(tmp_path / "snap", _sharded(_complete_files()))
     assert snapshot_problems(root) == []
+
+
+def _bf16(files: dict[str, str | bytes]) -> dict[str, str | bytes]:
+    """Convert all weighted components to the bf16 variant layout.
+
+    Mirrors the official Tongyi-MAI/Z-Image-Turbo commit that ships bf16
+    weights only: sharded text_encoder and transformer with the
+    transformers-style ``*.index.bf16.json`` index and bf16 shard names,
+    plus a single bf16 vae file.
+    """
+    files = dict(files)
+    del files["text_encoder/model.safetensors"]
+    text_encoder_shards = [
+        "model.bf16-00001-of-00002.safetensors",
+        "model.bf16-00002-of-00002.safetensors",
+    ]
+    for shard in text_encoder_shards:
+        files[f"text_encoder/{shard}"] = b"shard"
+    files["text_encoder/model.safetensors.index.bf16.json"] = json.dumps(
+        {"weight_map": {f"t{i}": shard for i, shard in enumerate(text_encoder_shards)}}
+    )
+    del files["transformer/diffusion_pytorch_model.safetensors"]
+    transformer_shards = [
+        "diffusion_pytorch_model.bf16-00001-of-00002.safetensors",
+        "diffusion_pytorch_model.bf16-00002-of-00002.safetensors",
+    ]
+    for shard in transformer_shards:
+        files[f"transformer/{shard}"] = b"shard"
+    files["transformer/diffusion_pytorch_model.safetensors.index.bf16.json"] = json.dumps(
+        {"weight_map": {f"w{i}": shard for i, shard in enumerate(transformer_shards)}}
+    )
+    del files["vae/diffusion_pytorch_model.safetensors"]
+    files["vae/diffusion_pytorch_model.bf16.safetensors"] = b"weights"
+    return files
+
+
+def test_bf16_complete_layout_accepted_and_selected(tmp_path: Path) -> None:
+    root = _write(tmp_path / "snap", _bf16(_complete_files()))
+    assert snapshot_problems(root) == []
+    assert snapshot_weight_variant(root) == "bf16"
+
+
+def test_default_layouts_select_no_variant(tmp_path: Path) -> None:
+    for files in (_complete_files(), _sharded(_complete_files())):
+        root = _write(tmp_path / "snap", files)
+        assert snapshot_problems(root) == []
+        assert snapshot_weight_variant(root) is None
+
+
+def test_default_layout_preferred_when_both_variants_complete(tmp_path: Path) -> None:
+    files = _bf16(_complete_files())
+    files.update(_complete_files())  # every component exists in both layouts
+    root = _write(tmp_path / "snap", files)
+    assert snapshot_problems(root) == []
+    assert snapshot_weight_variant(root) is None
+
+
+def test_bf16_missing_shard_rejected(tmp_path: Path) -> None:
+    files = _bf16(_complete_files())
+    del files["transformer/diffusion_pytorch_model.bf16-00002-of-00002.safetensors"]
+    root = _write(tmp_path / "snap", files)
+    problems = snapshot_problems(root)
+    assert problem_codes(problems) is ErrorCode.CACHE_INCOMPLETE
+    assert any(
+        "diffusion_pytorch_model.bf16-00002-of-00002.safetensors" in problem.detail
+        for problem in problems
+    )
+    assert snapshot_weight_variant(root) is None
+
+
+def test_bf16_malformed_index_rejected(tmp_path: Path) -> None:
+    files = _bf16(_complete_files())
+    files["text_encoder/model.safetensors.index.bf16.json"] = "{oops"
+    root = _write(tmp_path / "snap", files)
+    problems = snapshot_problems(root)
+    assert problem_codes(problems) is ErrorCode.CACHE_INCOMPLETE
+    assert any("index.bf16.json" in problem.detail for problem in problems)
+
+
+def test_bf16_unsafe_shard_name_rejected(tmp_path: Path) -> None:
+    files = _bf16(_complete_files())
+    files["transformer/diffusion_pytorch_model.safetensors.index.bf16.json"] = json.dumps(
+        {"weight_map": {"w0": "../../escape.bf16.safetensors"}}
+    )
+    root = _write(tmp_path / "snap", files)
+    problems = snapshot_problems(root)
+    assert problem_codes(problems) is ErrorCode.CACHE_INCOMPLETE
+    assert any("unsafe shard name" in problem.detail for problem in problems)
+
+
+def test_mixed_partial_layouts_rejected_without_mixing(tmp_path: Path) -> None:
+    # text_encoder only exists as bf16 while transformer/vae only exist in
+    # the default layout: neither variant is complete, and the snapshot must
+    # not validate by mixing them.
+    files = _bf16(_complete_files())
+    del files["transformer/diffusion_pytorch_model.bf16-00001-of-00002.safetensors"]
+    del files["transformer/diffusion_pytorch_model.bf16-00002-of-00002.safetensors"]
+    del files["transformer/diffusion_pytorch_model.safetensors.index.bf16.json"]
+    del files["vae/diffusion_pytorch_model.bf16.safetensors"]
+    files["transformer/diffusion_pytorch_model.safetensors"] = b"weights"
+    files["vae/diffusion_pytorch_model.safetensors"] = b"weights"
+    root = _write(tmp_path / "snap", files)
+    problems = snapshot_problems(root)
+    assert problem_codes(problems) is ErrorCode.CACHE_INCOMPLETE
+    details = [problem.detail for problem in problems]
+    assert any("text_encoder weights are missing" in detail for detail in details)
+    assert any("transformer weights are missing" in detail for detail in details)
+    assert any("vae weights are missing" in detail for detail in details)
+
+
+def test_legacy_bf16_index_layout_not_supported(tmp_path: Path) -> None:
+    # The deprecated legacy sharding format puts the variant before
+    # "index" (*.bf16.index.json); only the transformers-style
+    # *.index.bf16.json layout is supported.
+    files = _complete_files()
+    del files["text_encoder/model.safetensors"]
+    files["text_encoder/model-00001-of-00002.safetensors"] = b"shard"
+    files["text_encoder/model-00002-of-00002.safetensors"] = b"shard"
+    files["text_encoder/model.safetensors.bf16.index.json"] = json.dumps(
+        {
+            "weight_map": {
+                "t0": "model-00001-of-00002.safetensors",
+                "t1": "model-00002-of-00002.safetensors",
+            }
+        }
+    )
+    root = _write(tmp_path / "snap", files)
+    problems = snapshot_problems(root)
+    assert problem_codes(problems) is ErrorCode.CACHE_INCOMPLETE
+    assert any("text_encoder weights are missing" in problem.detail for problem in problems)
 
 
 def test_wrong_pipeline_class_rejected(tmp_path: Path) -> None:

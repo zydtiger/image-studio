@@ -5,7 +5,8 @@ shared cache through this module and never treats cache presence as proof a
 model is runnable: ``snapshot_problems`` validates a cached Z-Image snapshot
 against the official component manifest — pipeline class, component
 declarations, per-component config/tokenizer files, and weights as either a
-single safetensors file or an index referencing all its shards. No heavy
+single safetensors file or an index referencing all its shards, in the
+default layout or consistently in the ``bf16`` variant layout. No heavy
 imports, no remote code, no network: validation reads local files only.
 """
 
@@ -33,6 +34,8 @@ COMPONENT_CONFIG_FILES = {
 }
 
 #: Weight file layouts per weighted component: single file or sharded index.
+#: These are the default (unvaried) filenames; ``variant_weight_files``
+#: derives variant counterparts from them.
 COMPONENT_WEIGHT_FILES = {
     "text_encoder": (
         "text_encoder/model.safetensors",
@@ -47,6 +50,28 @@ COMPONENT_WEIGHT_FILES = {
         "vae/diffusion_pytorch_model.safetensors.index.json",
     ),
 }
+
+#: Weight-file variants a snapshot may consistently use, in preference
+#: order: a complete default layout always wins, ``bf16`` applies only when
+#: the whole snapshot carries bf16 weights. Other variants are not
+#: supported; runtime dtype is a separate concept chosen per run.
+SUPPORTED_WEIGHT_VARIANTS: tuple[str | None, ...] = (None, "bf16")
+
+
+def variant_weight_files(component: str, variant: str | None) -> tuple[str, str]:
+    """Filenames of one component's single weight file and sharding index.
+
+    Variant naming follows the installed loaders (diffusers 0.40 /
+    transformers 5.17 ``_add_variant``): the variant is inserted before the
+    final extension — ``model.bf16.safetensors`` and the transformers-style
+    sharded index ``model.safetensors.index.bf16.json``. Shard names come
+    from each index's ``weight_map`` and are not assumed here.
+    """
+    single, sharded_index = COMPONENT_WEIGHT_FILES[component]
+    if variant is None:
+        return single, sharded_index
+    stem, extension = sharded_index.rsplit(".", 1)
+    return f"{single.rsplit('.', 1)[0]}.{variant}.safetensors", f"{stem}.{variant}.{extension}"
 
 
 @dataclass(frozen=True)
@@ -279,8 +304,45 @@ def snapshot_problems(root: Path) -> list[SnapshotProblem]:
                 problems.append(
                     SnapshotProblem(ErrorCode.CACHE_INCOMPLETE, f"{relative} is missing")
                 )
-        if component in COMPONENT_WEIGHT_FILES:
-            problems.extend(_weights_problems(root, component))
+    problems.extend(_select_weight_layout(root)[1])
+    return problems
+
+
+def snapshot_weight_variant(root: Path) -> str | None:
+    """The weight variant a validated snapshot loads under, or ``None``.
+
+    Shared with ``snapshot_problems`` so registration, submit validation,
+    and the worker's pipeline load can never disagree: a complete default
+    layout loads through the default filenames (``None``), a snapshot whose
+    weights only exist as ``bf16`` files loads through ``variant='bf16'``.
+    A snapshot with no complete layout returns ``None``; loading it then
+    fails on its missing files like before, and validation reports why.
+    """
+    return _select_weight_layout(root)[0]
+
+
+def _select_weight_layout(root: Path) -> tuple[str | None, list[SnapshotProblem]]:
+    """Deterministically pick the single complete weight layout of a snapshot.
+
+    Default first: ordinary snapshots keep their exact previous behavior
+    even when extra bf16 files ride along. ``bf16`` applies only when every
+    weighted component is complete in bf16, so partial layouts are never
+    mixed. When neither layout is complete, the problems of both are
+    reported — they show why each candidate layout fails.
+    """
+    default_problems = _layout_problems(root, None)
+    if not default_problems:
+        return None, []
+    bf16_problems = _layout_problems(root, "bf16")
+    if not bf16_problems:
+        return "bf16", []
+    return None, [*default_problems, *bf16_problems]
+
+
+def _layout_problems(root: Path, variant: str | None) -> list[SnapshotProblem]:
+    problems: list[SnapshotProblem] = []
+    for component in COMPONENT_WEIGHT_FILES:
+        problems.extend(_weights_problems(root, component, variant))
     return problems
 
 
@@ -297,8 +359,8 @@ def _safe_shard_name(name: str) -> bool:
     )
 
 
-def _weights_problems(root: Path, component: str) -> list[SnapshotProblem]:
-    single, sharded_index = COMPONENT_WEIGHT_FILES[component]
+def _weights_problems(root: Path, component: str, variant: str | None) -> list[SnapshotProblem]:
+    single, sharded_index = variant_weight_files(component, variant)
     if (root / single).is_file():
         return []
     index_path = root / sharded_index

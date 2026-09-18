@@ -50,14 +50,26 @@ def load_pipeline(snapshot_path: str, dtype: str) -> tuple[Any, str]:
     Returns ``(pipeline, pipeline_class_name)``. Raises on missing files,
     unsupported dtype, or a pipeline-class mismatch — the worker converts
     any raise into a fatal fault report; no network access is attempted.
+
+    The weight-file variant is independent of the runtime ``dtype``: it is
+    re-derived from the snapshot through the same shared layout rules as
+    registration and submit validation, so a snapshot whose weights only
+    exist as bf16 files loads through ``variant='bf16'`` and an ordinary
+    snapshot through the default filenames.
     """
+
+    from pathlib import Path
 
     from diffusers import ZImagePipeline
 
+    from image_studio.hub.cache import snapshot_weight_variant
+
     torch_dtype = resolve_torch_dtype(dtype)
+    variant = snapshot_weight_variant(Path(snapshot_path))
     pipeline = ZImagePipeline.from_pretrained(
         snapshot_path,
         torch_dtype=torch_dtype,
+        variant=variant,
         local_files_only=True,
         use_safetensors=True,
         trust_remote_code=False,

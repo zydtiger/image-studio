@@ -91,10 +91,30 @@ def test_load_pipeline_offline_kwargs(fake_torch, fake_diffusers):
     assert class_name == "FakePipeline"
     assert FakePipeline.pretrained_kwargs["path"] == "/snap/path"
     assert FakePipeline.pretrained_kwargs["torch_dtype"] == "torch.bfloat16"
+    assert FakePipeline.pretrained_kwargs["variant"] is None
     assert FakePipeline.pretrained_kwargs["local_files_only"] is True
     assert FakePipeline.pretrained_kwargs["use_safetensors"] is True
     assert FakePipeline.pretrained_kwargs["trust_remote_code"] is False
     assert pipeline.to_devices == ["cuda"]
+
+
+def test_load_pipeline_selects_bf16_variant_for_bf16_snapshot(fake_torch, fake_diffusers, tmp_path):
+    from tests.unit.test_snapshot_validation import _bf16, _complete_files, _write
+
+    root = _write(tmp_path / "snap", _bf16(_complete_files()))
+    z_image.load_pipeline(str(root), "bfloat16")
+    assert FakePipeline.pretrained_kwargs["variant"] == "bf16"
+    assert FakePipeline.pretrained_kwargs["torch_dtype"] == "torch.bfloat16"
+
+
+def test_load_pipeline_keeps_default_variant_for_ordinary_snapshot(
+    fake_torch, fake_diffusers, tmp_path
+):
+    from tests.unit.test_snapshot_validation import _complete_files, _write
+
+    root = _write(tmp_path / "snap", _complete_files())
+    z_image.load_pipeline(str(root), "bfloat16")
+    assert FakePipeline.pretrained_kwargs["variant"] is None
 
 
 def test_load_pipeline_rejects_unsupported_dtype(fake_torch, fake_diffusers):

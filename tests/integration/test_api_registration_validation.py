@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from image_studio.testing import FakeRepoSpec
-from tests.unit.test_snapshot_validation import _complete_files, _sharded
+from tests.unit.test_snapshot_validation import _bf16, _complete_files, _sharded
 
 
 def _repo_files(variant: str) -> dict[str, str | bytes]:
@@ -218,3 +218,41 @@ def test_commit_only_cache_registration(harness) -> None:
     )
     assert by_branch.status_code == 422
     assert by_branch.json()["error"]["code"] == "cache_incomplete"
+
+
+def test_bf16_snapshot_registers_ready_and_submits(harness) -> None:
+    """A snapshot whose weights only exist as bf16 files is complete.
+
+    Registration, the cache badge, and submit-time revalidation all apply
+    the same shared layout rules; the worker would load it with
+    variant='bf16' through the same selection.
+    """
+    response = _register(harness, "test/z-image-bf16", _bf16(_complete_files()))
+    assert response.status_code == 201, response.text
+    registration = response.json()
+    assert registration["status"] == "ready"
+    assert registration["missing_files"] == []
+    repos = harness.client.get("/api/cache/models").json()["repos"]
+    entry = next(repo for repo in repos if repo["repo_id"] == "test/z-image-bf16")
+    assert entry["snapshots"][0]["incomplete"] is False
+
+    detail = harness.submit(registration["id"], prompt="bf16 layout")
+    assert detail["status"] in ("queued", "running", "completed", "partial")
+    listing = harness.client.get("/api/models").json()["registrations"]
+    assert listing[0]["status"] == "ready"
+
+
+def test_bf16_snapshot_missing_shard_rejected(harness) -> None:
+    files = _bf16(_complete_files())
+    del files["transformer/diffusion_pytorch_model.bf16-00002-of-00002.safetensors"]
+    response = _register(harness, "test/z-image-bf16-partial", files)
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error"]["code"] == "cache_incomplete"
+    assert any(
+        "diffusion_pytorch_model.bf16-00002-of-00002.safetensors" in p
+        for p in body["error"]["details"]["problems"]
+    )
+    repos = harness.client.get("/api/cache/models").json()["repos"]
+    entry = next(repo for repo in repos if repo["repo_id"] == "test/z-image-bf16-partial")
+    assert entry["snapshots"][0]["incomplete"] is True

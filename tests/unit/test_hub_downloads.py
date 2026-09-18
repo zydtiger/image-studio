@@ -15,7 +15,7 @@ from image_studio.hub.downloads import DownloadEngine
 from image_studio.schemas import DownloadStatus, ProfileId
 from image_studio.storage import database
 from image_studio.storage.repository import Repository
-from image_studio.testing import FakeHub
+from image_studio.testing import FakeHub, FakeRepoSpec
 
 
 @pytest.fixture
@@ -115,6 +115,44 @@ def test_verification_failure_reports_missing_files(setup, tmp_path: Path) -> No
     assert finished.status is DownloadStatus.FAILED
     assert finished.error.code.value == "cache_incomplete"
     assert "model_index.json" in finished.error.message
+
+
+def test_bf16_layout_download_verifies(tmp_path: Path) -> None:
+    """A bf16-only repository downloads its files and passes verification.
+
+    The allow patterns already select bf16 shards and their
+    ``*.index.bf16.json`` indexes, and post-download verification applies
+    the shared variant-aware layout rules — no redownload, no rejection.
+    """
+    from tests.unit.test_snapshot_validation import _bf16, _complete_files
+
+    hub = FakeHub(
+        tmp_path / "hub",
+        repos=[
+            FakeRepoSpec(
+                repo_id="test/z-image-bf16",
+                files=_bf16(_complete_files()),
+                sha="f" * 40,
+            )
+        ],
+    )
+    connection = database.connect(tmp_path / "app.sqlite")
+    database.migrate(connection)
+    repository = Repository(connection)
+    engine = DownloadEngine(repository, hub.stack())
+    engine.start()
+    try:
+        job = repository.create_download(
+            repo_id="test/z-image-bf16", revision="main", profile=ProfileId.Z_IMAGE
+        )
+        engine.enqueue(job.id)
+        finished = _wait_status(repository, job.id, DownloadStatus.COMPLETED, DownloadStatus.FAILED)
+        assert finished.status is DownloadStatus.COMPLETED
+        fetched = {call["filename"] for call in hub.api.calls["hf_hub_download"]}
+        assert any("bf16" in name for name in fetched)
+        assert "text_encoder/model.safetensors.index.bf16.json" in fetched
+    finally:
+        engine.stop()
 
 
 def test_single_task_serialization(setup) -> None:

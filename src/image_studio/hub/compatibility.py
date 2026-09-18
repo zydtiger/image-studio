@@ -20,7 +20,9 @@ from image_studio.hub.cache import (
     COMPONENT_CONFIG_FILES,
     COMPONENT_WEIGHT_FILES,
     REQUIRED_COMPONENTS,
+    SUPPORTED_WEIGHT_VARIANTS,
     manifest_problems,
+    variant_weight_files,
 )
 from image_studio.schemas import ImageStudioError, ProfileId
 
@@ -105,8 +107,13 @@ def _remote_manifest_problems(index: object, file_set: set[str]) -> list[str]:
     Declaration rules come from ``hub.cache.manifest_problems`` so local and
     remote validation can never drift; a non-object manifest (JSON list,
     null, ...) is a typed malformed-manifest finding, never an attribute
-    error. Shard contents are validated locally after download; remotely it
-    is enough that the single weight file or its sharding index is listed.
+    error. Weight layouts mirror the local whole-snapshot rule from
+    ``hub.cache``: ONE supported variant must cover every weighted
+    component, so a repository shipping only bf16 weights is as compatible
+    as a default-layout one, and mixed partial layouts are rejected remotely
+    exactly as they are locally. Shard contents are validated locally after
+    download; remotely it is enough that each component's single weight
+    file or its sharding index is listed under the selected variant.
     """
     declarations = manifest_problems(index)
     details = [problem.detail for problem in declarations]
@@ -118,13 +125,30 @@ def _remote_manifest_problems(index: object, file_set: set[str]) -> list[str]:
         for relative in COMPONENT_CONFIG_FILES.get(component, ()):
             if relative not in file_set:
                 details.append(f"{relative} is missing")
-        if component in COMPONENT_WEIGHT_FILES:
-            single, sharded_index = COMPONENT_WEIGHT_FILES[component]
-            if single not in file_set and sharded_index not in file_set:
+    if all(_missing_weight_components(file_set, variant) for variant in SUPPORTED_WEIGHT_VARIANTS):
+        for variant in SUPPORTED_WEIGHT_VARIANTS:
+            label = variant if variant is not None else "default"
+            for component in _missing_weight_components(file_set, variant):
+                single, sharded_index = variant_weight_files(component, variant)
                 details.append(
-                    f"{component} weights are missing (expected {single} or {sharded_index})"
+                    f"{label} weight layout incomplete: {component} weights are "
+                    f"missing (expected {single} or {sharded_index})"
                 )
     return details
+
+
+def _missing_weight_components(file_set: set[str], variant: str | None) -> list[str]:
+    """Weighted components absent from a listing under one variant.
+
+    A component counts as present when its single weight file or its
+    sharding index is listed; both names already carry the component
+    prefix from ``variant_weight_files``.
+    """
+    return [
+        component
+        for component in COMPONENT_WEIGHT_FILES
+        if not any(name in file_set for name in variant_weight_files(component, variant))
+    ]
 
 
 def _load_model_index(api: Any, repo_id: str, revision: str | None) -> dict[str, Any] | None:
