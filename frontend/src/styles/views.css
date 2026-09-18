@@ -369,6 +369,7 @@
   align-items: flex-end;
   gap: var(--space-3);
   flex-wrap: wrap;
+  margin-bottom: var(--space-5);
 }
 
 .discover__input {

@@ -121,6 +121,12 @@
   font: inherit;
 }
 
+/* Native selects ignore the inherited line height and size themselves from
+   UA metrics; force the inputs' token-derived minimum height instead. */
+select.field-control {
+  min-height: calc(1em * var(--line-height) + 2 * var(--space-2) + 2px);
+}
+
 .field-control::placeholder {
   color: var(--color-text-faint);
 }
