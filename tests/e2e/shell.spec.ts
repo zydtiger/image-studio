@@ -117,6 +117,19 @@ test("shows the runtime banner on every page", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("runtime banner reflects a healthy API without requesting fakeApi", async ({
+  page,
+}) => {
+  // Regression guard for the lazy-interceptor defect: this spec never
+  // requests `fakeApi`, so interception must already be installed. Against
+  // a dead proxy the banner stays offline; a healthy API — mocked or real,
+  // with or without a resident model — marks the banner connected and
+  // shows the live runtime cells.
+  const banner = page.getByRole("region", { name: "Runtime status" });
+  await expect(banner).toHaveAttribute("data-offline", "false");
+  await expect(banner.getByText("Queue")).toBeVisible();
+});
+
 test("captures desktop and narrow screenshots for review", async ({ page }) => {
   await page.screenshot({
     path: "test-results/shell-desktop.png",
