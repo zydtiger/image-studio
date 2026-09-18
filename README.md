@@ -47,13 +47,14 @@ That extra uses PyTorch's CUDA 13.0 index. Setup never downloads model weights.
 ## Running the backend
 
 ```sh
-uv run --locked image-studio serve --host 127.0.0.1 --port 7860
+just serve --host 127.0.0.1 --port 7860
 ```
 
-Host and port default from `config.toml` under the XDG config directory and
-can be overridden on the command line (CLI > TOML > defaults). Two explicit
-development flags are available and visibly identified in `/api/system` and
-`/api/runtime`:
+`just serve` starts the server with the inference extra. Host and port
+default to `127.0.0.1` and `7860`; `config.toml` under the XDG config
+directory can override them, and command-line flags win over both
+(CLI > `config.toml` > defaults). Two explicit development flags are
+available and visibly identified in `/api/system` and `/api/runtime`:
 
 ```sh
 uv run --locked image-studio serve --fake-runtime --fake-hub

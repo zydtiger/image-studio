@@ -20,3 +20,7 @@ frontend:
 # Build the frontend, then the Python wheel and sdist into dist/.
 build: frontend
     uv build
+
+# Start the server with inference dependencies.
+serve *args:
+    uv run --locked --extra inference image-studio serve {{args}}
