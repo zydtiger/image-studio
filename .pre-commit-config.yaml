@@ -81,8 +81,8 @@ repos:
         stages: [pre-push]
       - id: package-build
         name: frontend typecheck and build, then Python package build
-        entry: sh -c 'npm --prefix frontend run build && uv build'
+        entry: just build
         language: system
         pass_filenames: false
-        files: '^(frontend/|src/|pyproject\.toml|uv\.lock|README\.md|\.pre-commit-config\.yaml)'
+        files: '^(frontend/|src/|pyproject\.toml|uv\.lock|README\.md|\.pre-commit-config\.yaml|justfile)'
         stages: [pre-push]

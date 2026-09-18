@@ -2,13 +2,17 @@
 
 ## Setup and scope
 
-Use the setup commands in the root README. `uv sync --locked` installs the core
-package and development tools without the optional inference stack. Use
-`uv sync --locked --extra inference` when GPU implementation is required.
-Subsequent uv commands should include that extra if they need to retain it.
+Use the setup commands in the root README. `just setup` (owned by the root
+`justfile`) installs everything: `uv sync --locked` installs the core package
+and development tools without the optional inference stack, the frontend and
+e2e Node dependencies install from their lockfiles, and `prek install`
+activates the hooks. Build recipes do not re-run setup or reinstall project
+dependencies; run `just setup` first. Use `uv sync --locked --extra
+inference` when GPU implementation is required. Subsequent uv commands
+should include that extra if they need to retain it.
 
 Node is pinned in the root `.node-version`. Activate it using your preferred
-version manager, then use `npm --prefix frontend ci`. The lockfile is authoritative.
+version manager before `just setup`; the npm lockfiles are authoritative.
 Python targets Linux x86_64 and Python 3.12; other platforms are not yet supported.
 
 The backend server, storage, Hub integration, HTTP API, the real inference
@@ -44,10 +48,12 @@ git ls-files --others --exclude-standard -z |
 ```
 
 The commit stage includes structural and whitespace checks, the uv lock check,
-Python lint/format, and frontend lint/format. The push stage type-checks and builds
-the frontend, then builds the Python distribution including generated web assets.
-The frontend scripts own npm commands; hooks invoke them through the package.
-Commit subjects are validated at the commit-msg stage, not by `--all-files`.
+Python lint/format, and frontend lint/format. The push stage builds the Python
+distribution through `just build`, which type-checks and builds the frontend
+first and includes the generated web assets. The frontend scripts own npm
+commands; hooks invoke them through the package, and the root justfile owns
+the build orchestration. Commit subjects are validated at the commit-msg
+stage, not by `--all-files`.
 
 Backend behavioral tests run with `uv run --locked pytest` and are wired into
 the commit stage through the `backend-tests` hook. They inject the fake

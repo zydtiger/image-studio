@@ -54,12 +54,20 @@ visibly identified as development-only.
 
 ## Development and validation
 
-Use Python 3.12, uv, and the Node version in `.node-version`. Change Python
-dependencies through uv and frontend dependencies through npm; update their
-lockfiles together with manifests. Inference dependencies are an opt-in extra.
+Use Python 3.12, uv, just, and the Node version in `.node-version`. Change
+Python dependencies through uv and frontend dependencies through npm; update
+their lockfiles together with manifests. Inference dependencies are an
+opt-in extra.
+
+The root `justfile` owns command orchestration for setup and builds. `just
+setup` installs base and development dependencies and activates the hooks;
+`just build` builds the frontend and then the Python distribution. Setup is
+separate from builds: build recipes do not re-run setup or npm ci, download
+weights, or start services.
 
 `.pre-commit-config.yaml` owns mechanical commands and stage scopes. Activate
-hooks with `prek install`. Run `prek run --all-files` and
+hooks with `prek install`. The `package-build` hook runs `just build` at the
+pre-push stage. Run `prek run --all-files` and
 `prek run --all-files --stage pre-push` for a full local gate. For untracked
 scaffold files, pass the explicit file list with `--files`; `--all-files` only
 checks tracked files. For documentation-only edits, run the pre-commit stage
