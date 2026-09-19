@@ -20,6 +20,7 @@ import {
   isRunActive,
   runStatusLabel,
   runStatusTone,
+  workerStateLabel,
 } from "../../lib/statusTone";
 
 /**
@@ -142,8 +143,17 @@ export function QueuePanel({
     });
   };
 
-  const pending = queue?.pending ?? [];
+  // Runtime claims a run before its model has finished loading, while the
+  // database still lists it as queued. Independent polls can also overlap.
+  // Reconcile by identity on every render so either response order works.
+  const pending = (queue?.pending ?? []).filter(
+    (run) => run.run_id !== currentRunId,
+  );
   const active = activeRunQuery.data;
+  const activeLabel =
+    runtime?.state === "loading" || runtime?.state === "switching"
+      ? workerStateLabel(runtime.state)
+      : "Running";
 
   return (
     <section className="panel queue-panel" aria-label="Generation queue">
@@ -210,7 +220,7 @@ export function QueuePanel({
                     : ""}
                 </span>
               </div>
-              <Badge tone="info">Running</Badge>
+              <Badge tone="info">{activeLabel}</Badge>
               <div className="queue-item__actions">
                 <Button size="sm" onClick={() => onFocusRun(currentRunId)}>
                   View

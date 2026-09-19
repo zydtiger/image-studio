@@ -18,6 +18,68 @@ test.beforeEach(async ({ page, fakeApi }) => {
   await page.goto("/#/generate");
 });
 
+test("one submission has one queue row while runtime and queue snapshots overlap", async ({
+  page,
+  fakeApi,
+}, testInfo) => {
+  fakeApi!.setAutoStart(false);
+  let phase: "loading" | "generating" = "loading";
+  let submissions = 0;
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      new URL(request.url()).pathname === "/api/generations"
+    ) {
+      submissions += 1;
+    }
+  });
+  // Claim the first run without advancing its queued database snapshot:
+  // this is the real model-loading window, and also models stale polls.
+  await page.route("**/api/runtime", async (route) => {
+    const snapshot = fakeApi!.state();
+    const current = snapshot.runs[0];
+    await route.fulfill({
+      json: {
+        implementation: "fake",
+        resident: null,
+        last_error: null,
+        state: current ? phase : "idle",
+        current_run_id: current?.run_id ?? null,
+        queue_depth: Math.max(0, snapshot.runs.length - 1),
+      },
+    });
+  });
+  await page
+    .getByLabel("Prompt", { exact: true })
+    .fill("one deliberate submission");
+  await page.getByRole("button", { name: "Generate", exact: true }).click();
+  const queue = page.getByLabel("Generation queue");
+  await expect(queue.getByText("Loading model", { exact: true })).toBeVisible();
+  await expect(queue.getByRole("listitem")).toHaveCount(1);
+  await expect(queue.getByText("Queued", { exact: true })).toBeHidden();
+  expect(submissions).toBe(1);
+  expect(fakeApi!.state().runs).toHaveLength(1);
+
+  phase = "generating";
+  await expect(queue.getByText("Running", { exact: true })).toBeVisible();
+  await expect(queue.getByRole("listitem")).toHaveCount(1);
+  expect(submissions).toBe(1);
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  await page.screenshot({
+    path: testInfo.outputPath("queue-identity.png"),
+    fullPage: true,
+  });
+
+  // A second intentional submission with the same prompt remains a
+  // separate pending task, numbered #1 after the active run is removed.
+  await page.getByRole("button", { name: "Generate", exact: true }).click();
+  await expect(queue.getByRole("listitem")).toHaveCount(2);
+  await expect(queue.getByText("Queued", { exact: true })).toBeVisible();
+  await expect(queue.getByText(/#1 ·/)).toBeVisible();
+  expect(submissions).toBe(2);
+  expect(fakeApi!.state().runs).toHaveLength(2);
+});
+
 test("announces a cross-GPU replacement before submission", async ({
   page,
   fakeApi,

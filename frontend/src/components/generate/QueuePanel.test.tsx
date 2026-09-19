@@ -1,7 +1,19 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { QueueState, RunDetail, RunSummary } from "../../api/types";
+import type {
+  QueueState,
+  RunDetail,
+  RunSummary,
+  RuntimeStatus,
+} from "../../api/types";
 
 const runtimeApi = vi.hoisted(() => ({
   getRuntime: vi.fn(),
@@ -119,6 +131,84 @@ beforeEach(() => {
 });
 
 describe("QueuePanel", () => {
+  it.each([
+    ["queue-first", "loading", "Loading model"],
+    ["runtime-first", "loading", "Loading model"],
+    ["queue-first", "switching", "Switching model"],
+    ["runtime-first", "switching", "Switching model"],
+    ["queue-first", "generating", "Running"],
+    ["runtime-first", "generating", "Running"],
+  ] as const)(
+    "shows each run once with %s responses while %s",
+    async (order, state, label) => {
+      let resolveQueue!: (queue: QueueState) => void;
+      let resolveRuntime!: (runtime: RuntimeStatus) => void;
+      generationsApi.getQueue.mockReturnValue(
+        new Promise<QueueState>((resolve) => {
+          resolveQueue = resolve;
+        }),
+      );
+      runtimeApi.getRuntime.mockReturnValue(
+        new Promise<RuntimeStatus>((resolve) => {
+          resolveRuntime = resolve;
+        }),
+      );
+      // A claimed run can remain queued while its model loads, or in an
+      // older queue response. A second submission of the same prompt is
+      // a distinct task and must still be shown.
+      const queue: QueueState = {
+        paused: false,
+        pending: [
+          pendingRun({ run_id: "run-a", prompt: "same prompt" }),
+          pendingRun({ run_id: "run-b", prompt: "same prompt" }),
+        ],
+      };
+      const runtime: RuntimeStatus = {
+        implementation: "real",
+        state,
+        resident: null,
+        current_run_id: "run-a",
+        queue_depth: 1,
+        last_error: null,
+      };
+      generationsApi.getRun.mockResolvedValue(
+        runDetail({
+          run_id: "run-a",
+          prompt: "same prompt",
+          status: state === "generating" ? "running" : "queued",
+        }),
+      );
+      const onFocusRun = vi.fn();
+      render(
+        <ToastProvider>
+          <RuntimeProvider>
+            <QueuePanel onFocusRun={onFocusRun} />
+          </RuntimeProvider>
+        </ToastProvider>,
+      );
+      const panel = within(screen.getByLabelText("Generation queue"));
+      if (order === "queue-first") {
+        await act(async () => resolveQueue(queue));
+        expect(panel.getAllByRole("listitem")).toHaveLength(2);
+        await act(async () => resolveRuntime(runtime));
+      } else {
+        await act(async () => resolveRuntime(runtime));
+        expect(panel.getAllByRole("listitem")).toHaveLength(1);
+        await act(async () => resolveQueue(queue));
+      }
+      await waitFor(() =>
+        expect(panel.getAllByRole("listitem")).toHaveLength(2),
+      );
+      const rows = panel.getAllByRole("listitem");
+      expect(within(rows[0]).getByText(label)).toBeInTheDocument();
+      expect(within(rows[1]).getByText("Queued")).toBeInTheDocument();
+      expect(within(rows[1]).getByText(/#1 ·/)).toBeInTheDocument();
+      for (const row of rows)
+        fireEvent.click(within(row).getByRole("button", { name: "View" }));
+      expect(onFocusRun.mock.calls).toEqual([["run-a"], ["run-b"]]);
+    },
+  );
+
   it("renders an empty queue state", async () => {
     renderPanel({ paused: false, pending: [] });
 
