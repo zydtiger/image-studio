@@ -87,6 +87,17 @@ def main(root: Path):
             for key, value in expected_model.state_dict().items():
                 assert torch.equal(value, actual_model.state_dict()[key]), key
                 assert actual_model.state_dict()[key].device.type == "cpu"
+        # Exercise the real padding-mask path, which needs torchvision even
+        # for text-to-image. Weight conversion alone cannot catch this dependency.
+        with torch.inference_mode():
+            output = actual(
+                hidden_states=torch.randn(1, 4, 1, 4, 4),
+                timestep=torch.ones(1),
+                encoder_hidden_states=torch.randn(1, 4, 8),
+                padding_mask=torch.zeros(1, 1, 8, 8),
+            ).sample
+        assert output.shape == (1, 4, 1, 4, 4)
+        assert torch.isfinite(output).all()
         # Strict key and shape failures: no silent partial/random initialization.
         for bad in (
             {k: v for k, v in original.items() if k != "net.x_embedder.proj.1.weight"},
@@ -132,7 +143,7 @@ def main(root: Path):
     else:
         raise AssertionError("cancellation did not propagate")
     assert not torch.cuda.is_initialized()
-    print("28/40-layer conversion, strict assignment, native CFG and step/cancel: passed on CPU")
+    print("28/40-layer conversion/forward, strict assignment, CFG and step/cancel: passed on CPU")
 
 
 if __name__ == "__main__":

@@ -84,7 +84,7 @@ def dependency_versions() -> dict[str, str]:
     from importlib.metadata import PackageNotFoundError, version
 
     recorded: dict[str, str] = {}
-    for distribution in ("torch", "diffusers", "transformers", "accelerate"):
+    for distribution in ("torch", "torchvision", "diffusers", "transformers", "accelerate"):
         try:
             recorded[distribution] = version(distribution)
         except PackageNotFoundError:

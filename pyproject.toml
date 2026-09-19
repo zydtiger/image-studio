@@ -24,6 +24,7 @@ inference = [
     "accelerate>=1.15.0",
     "diffusers>=0.40.0",
     "torch>=2.14.0",
+    "torchvision>=0.29.0",
     "transformers>=5.17.0",
 ]
 
@@ -56,6 +57,7 @@ environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }
 
 [dependency-groups]
 dev = [

@@ -15,7 +15,9 @@ browser flow against the built frontend served by the real Python API; no
 fake mode claims to be a working inference backend. Real generation
 additionally requires the optional inference extra
 (`uv sync --locked --extra inference`) and an NVIDIA GPU; the opt-in
-real-GPU acceptance suite exists but has not been executed.
+real-GPU acceptance suite remains opt-in. Anima-Turbo and Anima 2.9B have
+been verified at 1024 × 1024 on an RTX 5090; this does not certify every
+model, GPU, or runtime scenario.
 
 ## Setup
 
@@ -128,5 +130,9 @@ checkpoint recipes are supported, not arbitrary single-file or SD.Next exports.
 The models retain the CircleStone Labs Non-Commercial License.
 
 Anima validation covers fake end-to-end flows and, when the inference extra
-is installed, tiny synthetic CPU tensor conversion with the real Diffusers
-classes. Real-GPU output quality and performance have not been verified.
+is installed, tiny synthetic CPU tensor conversion and denoiser forward passes
+with the real Diffusers classes. The inference extra includes the matching
+CUDA build of `torchvision`, required by Cosmos padding-mask preprocessing.
+Both profiles also produced real 1024 × 1024 PNGs through the live API on an
+RTX 5090 with their default steps/CFG, including a negative prompt for 2.9B.
+See [GPU validation](docs/development.md#anima-gpu-validation) for scope and rerun instructions.

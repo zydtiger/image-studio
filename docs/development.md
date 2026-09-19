@@ -101,6 +101,36 @@ Real-GPU acceptance verifies Base and Turbo, reuse, replacement, persistence, an
 manual Eject. Cross-GPU replacement is tested only when both devices are available
 and execution is authorized. Do not interrupt unrelated GPU workloads.
 
+## Anima GPU validation
+
+The inference extra includes `torchvision` from the same CUDA index as `torch`.
+Cosmos uses its transforms during denoising even for text-to-image. CPU conversion
+tests also execute the padding-mask forward path to catch missing dependencies.
+
+On 2026-09-19, both original Anima recipes generated 1024 × 1024 PNGs through
+the live API on an NVIDIA GeForce RTX 5090, using bfloat16 and seed 12345:
+
+- Anima-Turbo v1.1: 10 steps, CFG 1, no negative prompt.
+- Anima 2.9B Preview v1: 40 steps, CFG 4, with a negative prompt.
+
+The observed outputs were nonblank illustrations. The API runs also exercised
+switching between the models, PNG persistence and history records. This is
+functional verification, not a quality benchmark or verification of other GPUs.
+The stack was torch 2.14.0+cu130, torchvision 0.29.0+cu130, Diffusers 0.40.0,
+Transformers 5.17.0 and Accelerate 1.15.0. No model weights were downloaded.
+
+With both recipes already cached, explicitly select an idle GPU and run:
+
+```sh
+IMAGE_STUDIO_TEST_GPU=GPU-<uuid> uv run --locked --extra inference \
+  pytest -q -m gpu tests/gpu/test_real_anima.py
+```
+
+This opt-in test loads only local snapshots, generates both profiles at their
+defaults, checks PNG dimensions and variation, per-step progress, model switching,
+residency and Eject. It releases its worker afterward and writes images into the
+pytest temporary directory. Ordinary test runs exclude it.
+
 ## Publication
 
 Keep Git local. There is no remote, hosted CI, or release workflow. Building a

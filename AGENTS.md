@@ -17,9 +17,10 @@ React frontend served by the Python server. All of it is validated by
 CPU-only tests through the injected fake Hub and the inference fake worker
 process, including live browser flows against the built frontend served by
 the real API. Real generation additionally requires the opt-in inference
-extra and a GPU; the real-GPU acceptance suite is opt-in and has not been
-executed, so do not claim verified real-GPU behavior. Fake modes stay
-visibly identified as development-only.
+extra and a GPU. GPU tests remain opt-in. Anima-Turbo and Anima 2.9B have
+produced real default-parameter 1024 × 1024 images on an RTX 5090; scope
+verification claims to the evidence in `docs/development.md`. Fake modes
+stay visibly identified as development-only.
 
 ## Product boundaries
 
