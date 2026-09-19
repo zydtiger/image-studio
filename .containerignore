@@ -1,0 +1,21 @@
+# Only send application build inputs to Podman.
+**
+!Containerfile
+!.containerignore
+!pyproject.toml
+!uv.lock
+!README.md
+!frontend/
+!frontend/**
+!src/
+!src/**
+
+# Exclude local dependencies, generated assets, and private configuration.
+**/node_modules/
+**/__pycache__/
+**/*.py[cod]
+**/*.tsbuildinfo
+**/.env
+**/.env.*
+frontend/coverage/
+src/image_studio/web/static/
