@@ -123,7 +123,7 @@ test("captures a completed run's results panel", async ({ page, fakeApi }) => {
   await page
     .getByLabel("Prompt", { exact: true })
     .fill("a completed run for the screenshot");
-  await page.getByLabel("Images", { exact: true }).selectOption("2");
+  await page.getByLabel("Images", { exact: true }).fill("2");
   await page.getByRole("button", { name: "Generate" }).click();
 
   await expect(page.getByText("2/2 images")).toBeVisible({ timeout: 15_000 });

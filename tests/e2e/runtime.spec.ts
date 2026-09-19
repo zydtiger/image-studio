@@ -187,7 +187,7 @@ test("cancels a running run cooperatively and keeps completed images", async ({
   // complete the first image only after the burst settles.
   fakeApi!.setStepsPerTick(10);
   await page.getByLabel("Prompt", { exact: true }).fill("cancel me");
-  await page.getByLabel("Images", { exact: true }).selectOption("4");
+  await page.getByLabel("Images", { exact: true }).fill("4");
   await page.getByRole("button", { name: "Generate" }).click();
 
   const results = page.getByLabel("Run results");

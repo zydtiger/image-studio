@@ -7,6 +7,7 @@ import type {
 import { Button } from "../ui/Button";
 import { NumberField, SelectField, TextField } from "../ui/fields";
 import { cx } from "../../lib/cx";
+import { MAX_IMAGE_COUNT, MIN_IMAGE_COUNT } from "../../lib/validation";
 import type { FormErrors, GenerationFormState } from "./formState";
 
 export interface GenerationFormProps {
@@ -229,19 +230,17 @@ export function GenerationForm({
           inputMode="numeric"
           onChange={(event) => onChange({ seed: event.target.value })}
         />
-        <SelectField
+        <NumberField
           id="generation-count"
           label="Images"
           error={errors.count}
           value={form.count}
+          min={MIN_IMAGE_COUNT}
+          max={MAX_IMAGE_COUNT}
+          step={1}
+          required
           onChange={(event) => onChange({ count: event.target.value })}
-        >
-          {[1, 2, 3, 4].map((value) => (
-            <option key={value} value={String(value)}>
-              {value}
-            </option>
-          ))}
-        </SelectField>
+        />
       </div>
 
       {profileSpec !== undefined && !guidanceAdjustable ? (

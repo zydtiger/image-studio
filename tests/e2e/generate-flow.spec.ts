@@ -35,7 +35,7 @@ test("generates images with recorded seeds and keeps the resident model visible"
     .getByLabel("Prompt", { exact: true })
     .fill("a quiet harbor at dawn, 你好");
   await page.getByLabel("Seed", { exact: true }).fill("500");
-  await page.getByLabel("Images", { exact: true }).selectOption("2");
+  await page.getByLabel("Images", { exact: true }).fill("2");
   await page.getByRole("button", { name: "Generate" }).click();
 
   // The banner shows the fake runtime and then the running worker.
@@ -120,7 +120,7 @@ test("a second submission in the same session replaces the completed run", async
   // page; the panel must switch to run B and show its progress.
   await page.getByLabel("Prompt", { exact: true }).fill("second run");
   await page.getByLabel("Seed", { exact: true }).fill("200");
-  await page.getByLabel("Images", { exact: true }).selectOption("2");
+  await page.getByLabel("Images", { exact: true }).fill("2");
   await page.getByRole("button", { name: "Generate" }).click();
 
   await expect(runSeedLabel(200)).toBeVisible({ timeout: 10_000 });

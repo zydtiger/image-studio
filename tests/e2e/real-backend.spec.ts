@@ -133,7 +133,7 @@ test("full flow: download+register, generate twice on one page, history, downloa
     .getByLabel("Prompt", { exact: true })
     .fill("integration alpha, a quiet harbor at dawn 你好");
   await page.getByLabel("Seed", { exact: true }).fill("400");
-  await page.getByLabel("Images", { exact: true }).selectOption("2");
+  await page.getByLabel("Images", { exact: true }).fill("2");
   await page.getByRole("button", { name: "Generate" }).click();
 
   await expect(results.getByText("Completed").first()).toBeVisible({
@@ -162,7 +162,7 @@ test("full flow: download+register, generate twice on one page, history, downloa
     .getByLabel("Prompt", { exact: true })
     .fill("integration beta, second same-page run");
   await page.getByLabel("Seed", { exact: true }).fill("500");
-  await page.getByLabel("Images", { exact: true }).selectOption("1");
+  await page.getByLabel("Images", { exact: true }).fill("1");
   await page.getByRole("button", { name: "Generate" }).click();
 
   await expect(results.getByText("seed 500").first()).toBeVisible({
