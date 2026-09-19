@@ -203,7 +203,7 @@ class DownloadEngine:
             raise ImageStudioError(
                 problem_codes(problems), "; ".join(problem.detail for problem in problems)
             )
-        self._persist(self._repository.complete_download, job.id, job.sources[0].snapshot_path)
+        self._persist(self._repository.complete_download, job.id)
 
     def _transfer(
         self,
@@ -260,7 +260,7 @@ class DownloadEngine:
                 + "; ".join(problem.detail for problem in problems),
             )
             return
-        self._persist(self._repository.complete_download, job_id, str(snapshot.path))
+        self._persist(self._repository.complete_download, job_id)
 
 
 def _file_size(path: str | None) -> int:

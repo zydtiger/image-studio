@@ -14,8 +14,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 from image_studio import schemas
+from image_studio.hub.paths import resolve_sources, snapshot_path
 from image_studio.schemas import (
     DownloadJob,
     DownloadStatus,
@@ -69,9 +71,10 @@ class RunFilters:
 
 
 class Repository:
-    def __init__(self, connection: sqlite3.Connection) -> None:
+    def __init__(self, connection: sqlite3.Connection, *, hub_cache_dir: Path) -> None:
         self._connection = connection
         self._lock = threading.RLock()
+        self.hub_cache_dir = hub_cache_dir
 
     @contextmanager
     def _write(self) -> Iterator[sqlite3.Connection]:
@@ -91,7 +94,6 @@ class Repository:
         repo_id: str,
         commit_sha: str,
         profile: ProfileId,
-        snapshot_path: str,
         display_name: str | None,
         sources: tuple[schemas.ModelSource, ...] = (),
     ) -> schemas.ModelRegistration:
@@ -101,15 +103,14 @@ class Repository:
             with self._write() as conn:
                 conn.execute(
                     "INSERT INTO registrations (id, repo_id, commit_sha, profile,"
-                    " display_name, status, missing_files, snapshot_path, created_at, sources)"
-                    " VALUES (?, ?, ?, ?, ?, 'ready', '[]', ?, ?, ?)",
+                    " display_name, status, missing_files, created_at, sources)"
+                    " VALUES (?, ?, ?, ?, ?, 'ready', '[]', ?, ?)",
                     (
                         registration_id,
                         repo_id,
                         commit_sha,
                         profile.value,
                         display_name,
-                        snapshot_path,
                         created,
                         _dump_sources(sources),
                     ),
@@ -128,14 +129,14 @@ class Repository:
             ).fetchone()
         if row is None:
             raise NotFoundError(f"unknown registration {registration_id}")
-        return _row_to_registration(row)
+        return _row_to_registration(row, self.hub_cache_dir)
 
     def list_registrations(self) -> list[schemas.ModelRegistration]:
         with self._lock:
             rows = self._connection.execute(
                 "SELECT * FROM registrations ORDER BY created_at DESC"
             ).fetchall()
-        return [_row_to_registration(row) for row in rows]
+        return [_row_to_registration(row, self.hub_cache_dir) for row in rows]
 
     def update_registration(
         self,
@@ -234,14 +235,14 @@ class Repository:
             ).fetchone()
         if row is None:
             raise NotFoundError(f"unknown download job {job_id}")
-        return _row_to_download(row)
+        return _row_to_download(row, self.hub_cache_dir)
 
     def list_downloads(self) -> list[DownloadJob]:
         with self._lock:
             rows = self._connection.execute(
                 "SELECT * FROM downloads ORDER BY created_at DESC"
             ).fetchall()
-        return [_row_to_download(row) for row in rows]
+        return [_row_to_download(row, self.hub_cache_dir) for row in rows]
 
     def claim_download(self, job_id: str) -> bool:
         """Atomically move a queued job to running; False if it left the queue."""
@@ -283,7 +284,7 @@ class Repository:
         with self._write() as conn:
             conn.execute(f"UPDATE downloads SET {', '.join(assignments)} WHERE id = ?", values)
 
-    def complete_download(self, job_id: str, snapshot_path: str) -> DownloadJob:
+    def complete_download(self, job_id: str) -> DownloadJob:
         """Publish a verified download and its registration in one transaction."""
         with self._write() as conn:
             job = conn.execute("SELECT * FROM downloads WHERE id = ?", (job_id,)).fetchone()
@@ -294,17 +295,16 @@ class Repository:
             now = utc_now_iso()
             conn.execute(
                 "INSERT INTO registrations (id, repo_id, commit_sha, profile,"
-                " status, missing_files, snapshot_path, created_at, sources)"
-                " VALUES (?, ?, ?, ?, 'ready', '[]', ?, ?, ?)"
+                " status, missing_files, created_at, sources)"
+                " VALUES (?, ?, ?, ?, 'ready', '[]', ?, ?)"
                 " ON CONFLICT (repo_id, profile, commit_sha) DO UPDATE SET"
                 " status = 'ready', missing_files = '[]',"
-                " snapshot_path = excluded.snapshot_path, sources = excluded.sources",
+                " sources = excluded.sources",
                 (
                     _new_id(),
                     job["repo_id"],
                     job["resolved_commit"],
                     job["profile"],
-                    snapshot_path,
                     now,
                     job["sources"],
                 ),
@@ -393,10 +393,10 @@ class Repository:
             ]
             conn.execute(
                 "INSERT INTO runs (run_id, queue_seq, created_at, status,"
-                " registration_id, repo_id, commit_sha, profile, dtype, snapshot_path,"
+                " registration_id, repo_id, commit_sha, profile, dtype,"
                 " gpu_uuid, gpu_name, prompt, negative_prompt, width, height, steps,"
                 " guidance, initial_seed, image_count, sources)"
-                " VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     spec.run_id,
                     queue_seq,
@@ -406,7 +406,6 @@ class Repository:
                     spec.model.commit_sha,
                     spec.model.profile.value,
                     spec.model.dtype,
-                    spec.model.snapshot_path,
                     spec.gpu.uuid,
                     spec.gpu.name,
                     spec.prompt,
@@ -649,8 +648,10 @@ class Repository:
                             commit_sha=row["commit_sha"],
                             profile=ProfileId(row["profile"]),
                             dtype=row["dtype"],
-                            snapshot_path=row["snapshot_path"],
-                            sources=json.loads(row["sources"]),
+                            snapshot_path=str(
+                                snapshot_path(self.hub_cache_dir, row["repo_id"], row["commit_sha"])
+                            ),
+                            sources=resolve_sources(self.hub_cache_dir, json.loads(row["sources"])),
                         ),
                         gpu=FrozenGpu(uuid=row["gpu_uuid"], name=row["gpu_name"]),
                         prompt=row["prompt"],
@@ -733,23 +734,23 @@ def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def _row_to_registration(row: sqlite3.Row) -> schemas.ModelRegistration:
+def _row_to_registration(row: sqlite3.Row, cache_dir: Path) -> schemas.ModelRegistration:
     return schemas.ModelRegistration(
         id=row["id"],
         repo_id=row["repo_id"],
         commit_sha=row["commit_sha"],
         profile=ProfileId(row["profile"]),
-        sources=json.loads(row["sources"]),
+        sources=resolve_sources(cache_dir, json.loads(row["sources"])),
         display_name=row["display_name"],
         status=RegistrationStatus(row["status"]),
         missing_files=json.loads(row["missing_files"]),
-        snapshot_path=row["snapshot_path"],
+        snapshot_path=str(snapshot_path(cache_dir, row["repo_id"], row["commit_sha"])),
         created_at=row["created_at"],
         last_used_at=_parse_ts(row["last_used_at"]),
     )
 
 
-def _row_to_download(row: sqlite3.Row) -> DownloadJob:
+def _row_to_download(row: sqlite3.Row, cache_dir: Path) -> DownloadJob:
     error = None
     if row["error_code"]:
         error = schemas.ErrorInfo(
@@ -759,7 +760,7 @@ def _row_to_download(row: sqlite3.Row) -> DownloadJob:
         id=row["id"],
         repo_id=row["repo_id"],
         requested_revision=row["requested_revision"],
-        sources=json.loads(row["sources"]),
+        sources=resolve_sources(cache_dir, json.loads(row["sources"])),
         resolved_commit=row["resolved_commit"],
         profile=ProfileId(row["profile"]),
         status=DownloadStatus(row["status"]),
@@ -800,6 +801,7 @@ def run_detail_row(
     row: dict[str, object],
     images: list[dict[str, object]],
     *,
+    cache_dir: Path,
     queue_position: int | None = None,
     progress: schemas.RunProgressSnapshot | None = None,
 ) -> schemas.RunDetail:
@@ -826,7 +828,7 @@ def run_detail_row(
         repo_id=str(row["repo_id"]),
         commit_sha=str(row["commit_sha"]),
         profile=ProfileId(str(row["profile"])),
-        sources=json.loads(row.get("sources") or "[]"),
+        sources=resolve_sources(cache_dir, json.loads(row.get("sources") or "[]")),
         dtype=str(row["dtype"]),
         gpu=gpu,
         prompt=str(row["prompt"]),
@@ -860,4 +862,6 @@ def run_detail_row(
 
 
 def _dump_sources(sources: tuple[schemas.ModelSource, ...]) -> str:
-    return json.dumps([source.model_dump(mode="json") for source in sources])
+    return json.dumps(
+        [source.model_dump(mode="json", exclude={"snapshot_path"}) for source in sources]
+    )

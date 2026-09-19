@@ -28,7 +28,7 @@ Volume=%h/.config/image-studio:/config/image-studio:ro
 Volume=%h/.local/share/image-studio:/data/image-studio:rw
 Volume=%h/.cache/image-studio:/cache/image-studio:rw
 Volume=%h/.local/state/image-studio:/state/image-studio:rw
-# Existing registrations using host snapshot paths must be re-registered.
+# Model snapshots are resolved under the container's XDG cache directory.
 Volume=/mnt/narwhal/models/huggingface/hub:/cache/huggingface/hub:rw
 
 StopTimeout=180

@@ -82,6 +82,9 @@ seed arithmetic.
   `local_files_only=True` from that path. The runtime never re-resolves
   repo or revision against the Hub, eliminating repo+revision lookup
   ambiguity when a cache holds multiple revisions.
+  The path is derived from the current cache root and fixed repo/commit identity;
+  it is not persisted. Paused runs reconstruct paths and validate the same fixed
+  identities against the current cache before dispatch on resume.
 - Profile metadata (`schemas.PROFILES`) is the single truth for validation
   bounds, defaults, field visibility, and UI capability metadata. The
   inference subsystem's `profiles.py` consumes these constants; it does not
@@ -296,7 +299,7 @@ state; schema versioning via `PRAGMA user_version` with SQL files under
 `storage/migrations/`.
 
 - `registrations(id, repo_id, commit_sha, profile, display_name, status,
-  missing_files, snapshot_path, created_at, last_used_at)` — status flips to
+  missing_files, sources, created_at, last_used_at)` — status flips to
   `missing_files` when the cache snapshot disappears externally; removing a
   registration never deletes shared cache files.
 - `downloads(id, repo_id, requested_revision, resolved_commit, profile,
@@ -366,14 +369,21 @@ request bodies and registrations remain valid.
 
 Downloads, registrations, frozen models and run details carry `sources`: an
 immutable list of `ModelSource` records (`repo_id`, `commit_sha`, `files`,
-`snapshot_path`). It is server-owned; clients cannot choose arbitrary files or
+`snapshot_path`). The path is resolved for API/runtime use only; SQLite and new
+metadata exports contain only `repo_id`, `commit_sha` and relative `files`.
+It is server-owned; clients cannot choose arbitrary files or
 component paths. Anima downloads resolve the original checkpoint revision and
 use the pinned official shared-component revision before queueing. Retrying
 keeps this manifest, and registration requires every selected file locally.
 Z-Image retains its existing single-snapshot loading and an empty source list.
 Migration 002 adds JSON source columns to downloads, registrations and runs,
 with an empty-list default preserving existing records. Metadata exports and
-restart reconstruction retain all recorded sources.
+restart reconstruction retain all recorded source identities. Migration 003
+removes stored snapshot columns and source paths from registrations, downloads
+and runs without changing identities, fixed revisions, files, or history.
+Repository reads resolve paths using the active Hub cache root; they do not
+regenerate recorded component versions from the current recipe. Existing
+metadata files are not rewritten as part of this migration.
 
 The Anima adapter uses native Diffusers modular blocks, original checkpoint
 weights and explicit local component loaders. It never follows model-card

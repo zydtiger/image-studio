@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -17,7 +18,7 @@ from image_studio.storage.repository import NotFoundError, Repository, RunFilter
 def repo(tmp_path: Path) -> Repository:
     connection = database.connect(tmp_path / "app.sqlite")
     database.migrate(connection)
-    return Repository(connection)
+    return Repository(connection, hub_cache_dir=tmp_path / "hub")
 
 
 def _registration(repo: Repository) -> s.ModelRegistration:
@@ -25,7 +26,6 @@ def _registration(repo: Repository) -> s.ModelRegistration:
         repo_id="Tongyi-MAI/Z-Image",
         commit_sha="c" * 40,
         profile=s.ProfileId.Z_IMAGE,
-        snapshot_path="/hf/snapshots/" + "c" * 40,
         display_name="Z-Image",
     )
 
@@ -59,10 +59,10 @@ def _spec(
 
 def test_migrations_set_user_version(tmp_path: Path) -> None:
     connection = database.connect(tmp_path / "app.sqlite")
-    assert database.migrate(connection) == 2
-    assert database.schema_version(connection) == 2
+    assert database.migrate(connection) == 3
+    assert database.schema_version(connection) == 3
     database.migrate(connection)  # idempotent
-    assert database.schema_version(connection) == 2
+    assert database.schema_version(connection) == 3
 
 
 def test_create_run_persists_queued_run_and_pending_images(repo: Repository) -> None:
@@ -118,7 +118,9 @@ def test_paused_specs_rebuild_frozen_handoff(repo: Repository) -> None:
     assert len(specs) == 1
     spec = specs[0]
     assert spec.run_id == "aa" * 16
-    assert spec.model.snapshot_path == "/hf/snapshots/" + "c" * 40
+    assert spec.model.snapshot_path == str(
+        repo.hub_cache_dir / "models--Tongyi-MAI--Z-Image" / "snapshots" / ("c" * 40)
+    )
     assert spec.gpu.uuid == "GPU-fake-0001"
     assert spec.seeds == (11, 12)
     assert spec.artifact_ids == ("image-001", "image-002")
@@ -226,7 +228,6 @@ def test_registration_lifecycle_and_guards(repo: Repository) -> None:
             repo_id="Tongyi-MAI/Z-Image",
             commit_sha="c" * 40,
             profile=s.ProfileId.Z_IMAGE,
-            snapshot_path="/x",
             display_name=None,
         )
     repo.delete_registration(registration.id)
@@ -278,8 +279,8 @@ def test_migration_failure_rolls_back_completely_and_retries(tmp_path, monkeypat
 
     # restart/retry with the real scripts applies cleanly on the same file
     monkeypatch.setattr(database, "_migration_scripts", original)
-    assert database.migrate(connection) == 2
-    assert database.schema_version(connection) == 2
+    assert database.migrate(connection) == 3
+    assert database.schema_version(connection) == 3
     assert (
         connection.execute("SELECT name FROM sqlite_master WHERE name='runs'").fetchone()
         is not None
@@ -292,19 +293,17 @@ def test_update_registration_conflict_is_atomic(tmp_path):
 
     connection = database.connect(tmp_path / "app.sqlite")
     database.migrate(connection)
-    repo = Repository(connection)
+    repo = Repository(connection, hub_cache_dir=tmp_path / "hub")
     base = repo.create_registration(
         repo_id="Tongyi-MAI/Z-Image",
         commit_sha="c" * 40,
         profile=s.ProfileId.Z_IMAGE,
-        snapshot_path="/x",
         display_name=None,
     )
     repo.create_registration(
         repo_id="Tongyi-MAI/Z-Image",
         commit_sha="c" * 40,
         profile=s.ProfileId.Z_IMAGE_TURBO,
-        snapshot_path="/x",
         display_name=None,
     )
     with pytest.raises(ValueError, match="already exists"):
@@ -318,18 +317,20 @@ def test_update_registration_conflict_is_atomic(tmp_path):
     connection.close()
 
 
-def test_sources_round_trip_and_v1_migration_preserve_old_records(repo, tmp_path):
+@pytest.mark.parametrize("old_version", [1, 2])
+def test_sources_round_trip_and_migrations_preserve_old_records(repo, tmp_path, old_version):
     source = s.ModelSource(
         repo_id="repo/component",
         commit_sha="d" * 40,
         files=("model.safetensors",),
-        snapshot_path="/cache/component",
+        snapshot_path=str(
+            repo.hub_cache_dir / "models--repo--component" / "snapshots" / ("d" * 40)
+        ),
     )
     registration = repo.create_registration(
         repo_id="circlestone-labs/Anima",
         commit_sha="a" * 40,
         profile=s.ProfileId.ANIMA_TURBO,
-        snapshot_path="/cache/primary",
         display_name="Anima",
         sources=(source,),
     )
@@ -348,29 +349,87 @@ def test_sources_round_trip_and_v1_migration_preserve_old_records(repo, tmp_path
     assert repo.paused_specs()[0].model.sources == (source,)
     assert repo.get_run(spec.run_id)["sources"] != "[]"
 
-    # Reconstruct a v1 database containing the same pre-migration records.
+    # Reconstruct the actual old schema, including paths from another environment.
     old = database.connect(tmp_path / "old.sqlite")
-    first_script = database._migration_scripts()[0][1]
-    old.executescript(first_script)
-    old.execute("PRAGMA user_version=1")
+    for _, script in database._migration_scripts()[:old_version]:
+        old.executescript(script)
+    old.execute(f"PRAGMA user_version={old_version}")
     for table in ("registrations", "downloads", "runs", "images"):
         for row in repo._connection.execute(f"SELECT * FROM {table}"):
             data = {key: row[key] for key in row.keys() if key != "sources"}
+            if table in ("registrations", "runs"):
+                data["snapshot_path"] = "/old/cache/snapshot"
+            if old_version == 2 and "sources" in row.keys():
+                data["sources"] = json.dumps(
+                    [
+                        dict(item, snapshot_path="/old/home/cache/component")
+                        for item in json.loads(row["sources"])
+                    ]
+                )
             columns = ", ".join(data)
             placeholders = ", ".join("?" for _ in data)
             old.execute(
                 f"INSERT INTO {table} ({columns}) VALUES ({placeholders})", list(data.values())
             )
     old.commit()
-    assert database.migrate(old) == 2
-    legacy = Repository(old)
-    assert legacy.get_registration(registration.id).sources == ()
-    assert legacy.get_download(job.id).sources == ()
-    assert legacy.paused_specs()[0].model.sources == ()
+    assert database.migrate(old) == 3
+    new_cache = tmp_path / "relocated-hub"
+    legacy = Repository(old, hub_cache_dir=new_cache)
+    expected_sources = (
+        (
+            source.model_copy(
+                update={
+                    "snapshot_path": str(
+                        new_cache / "models--repo--component" / "snapshots" / ("d" * 40)
+                    )
+                }
+            ),
+        )
+        if old_version == 2
+        else ()
+    )
+    assert legacy.get_registration(registration.id).sources == expected_sources
+    assert legacy.get_registration(registration.id).snapshot_path == str(
+        new_cache / "models--circlestone-labs--Anima" / "snapshots" / ("a" * 40)
+    )
+    assert legacy.get_download(job.id).sources == expected_sources
+    assert legacy.paused_specs()[0].model.sources == expected_sources
     assert legacy.get_run(spec.run_id)["prompt"] == spec.prompt
     assert legacy.get_images(spec.run_id) == repo.get_images(spec.run_id)
-    assert database.migrate(old) == 2
+    for table in ("registrations", "downloads", "runs", "images"):
+        original_rows = [dict(row) for row in repo._connection.execute(f"SELECT * FROM {table}")]
+        if old_version == 1:
+            for row in original_rows:
+                if "sources" in row:
+                    row["sources"] = "[]"
+        migrated_rows = [dict(row) for row in old.execute(f"SELECT * FROM {table}")]
+        for rows in (original_rows, migrated_rows):
+            for row in rows:
+                if "sources" in row:
+                    row["sources"] = json.loads(row["sources"])
+        assert migrated_rows == original_rows
+    assert database.migrate(old) == 3
     old.close()
+
+
+def test_portable_cache_migration_rolls_back_column_removal_on_invalid_sources(tmp_path):
+    connection = database.connect(tmp_path / "legacy.sqlite")
+    for _, script in database._migration_scripts()[:2]:
+        connection.executescript(script)
+    connection.execute("PRAGMA user_version=2")
+    connection.execute(
+        "INSERT INTO registrations (id, repo_id, commit_sha, profile, created_at, snapshot_path, sources)"
+        " VALUES ('existing', 'repo/model', 'fixed', 'z-image', '2026-09-19', '/old/cache', 'invalid')"
+    )
+    connection.commit()
+    with pytest.raises(sqlite3.OperationalError, match="malformed JSON"):
+        database.migrate(connection)
+    assert database.schema_version(connection) == 2
+    assert (
+        connection.execute("SELECT snapshot_path FROM registrations").fetchone()[0] == "/old/cache"
+    )
+    assert "snapshot_path" in [row[1] for row in connection.execute("PRAGMA table_info(runs)")]
+    connection.close()
 
 
 def test_download_completion_rolls_back_registration_on_write_failure(repo):
@@ -387,10 +446,10 @@ def test_download_completion_rolls_back_registration_on_write_failure(repo):
         " WHEN NEW.status = 'completed' BEGIN SELECT RAISE(ABORT, 'write failed'); END"
     )
     with pytest.raises(sqlite3.IntegrityError, match="write failed"):
-        repo.complete_download(job.id, "/cache/model")
+        repo.complete_download(job.id)
     assert repo.list_registrations() == before
     assert repo.get_download(job.id).status is s.DownloadStatus.RUNNING
     repo._connection.execute("DROP TRIGGER reject_completion")
-    repo.complete_download(job.id, "/cache/model")
+    repo.complete_download(job.id)
     assert len(repo.list_registrations()) == len(before) + 1
     assert repo.get_download(job.id).status is s.DownloadStatus.COMPLETED

@@ -98,6 +98,11 @@ assets under `src/image_studio/web/static/`.
 - Keep one model resident across the entire application, until explicit Eject,
   a model/GPU change, worker failure, or shutdown. No idle timeout.
 - Reuse the official Hugging Face cache; keep app registration metadata in SQLite.
+- Store fixed repository/commit identities, not cache paths. Registrations,
+  download retries and paused runs resolve snapshots from the current Hugging
+  Face cache configuration, including after moving between host and container.
+  Existing databases migrate automatically on startup; model files must already
+  be present in the selected cache for generation.
 - Keep generated images and per-run metadata outside the repo in XDG data storage.
 
 See [architecture and file trees](docs/architecture.md) for the accepted design,

@@ -64,7 +64,6 @@ def register_model(request: Request, body: schemas.RegistrationCreate) -> schema
             repo_id=body.repo_id,
             commit_sha=hit.commit_sha,
             profile=body.profile,
-            snapshot_path=str(hit.path),
             display_name=body.display_name,
             sources=sources,
         )
@@ -78,7 +77,7 @@ def list_models(request: Request) -> dict[str, list[schemas.ModelRegistration]]:
 
     repository = state(request).repository
     for registration in repository.list_registrations():
-        if registration.sources:
+        if registration.snapshot_path:
             problems = model_problems(
                 Path(registration.snapshot_path),
                 registration.repo_id,

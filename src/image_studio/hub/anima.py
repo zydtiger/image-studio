@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from image_studio.hub.cache import SnapshotProblem
+from image_studio.hub.paths import snapshot_path
 from image_studio.schemas import ErrorCode, ImageStudioError, ModelSource, ProfileId
 
 SHARED_REPO = "circlestone-labs/Anima-Base-v1.0-Diffusers"
@@ -62,10 +63,6 @@ def recipe_for(repo_id: str, profile: ProfileId) -> AnimaRecipe | None:
             ErrorCode.UNSUPPORTED_MODEL, "profile does not match this Anima repo"
         )
     return recipe
-
-
-def snapshot_path(cache_dir: Path, repo_id: str, commit: str) -> Path:
-    return cache_dir / ("models--" + repo_id.replace("/", "--")) / "snapshots" / commit
 
 
 def make_sources(

@@ -372,7 +372,11 @@ def resolve_seeds(
 
 
 class ModelSource(BaseModel):
-    """Backend-owned, immutable file selection at one fixed Hub revision."""
+    """Fixed Hub file selection with a runtime-only, environment-resolved path.
+
+    Persistence keeps repo_id, commit_sha and files; snapshot_path is attached
+    when reading in the current cache environment and is never stored.
+    """
 
     model_config = ConfigDict(frozen=True)
 

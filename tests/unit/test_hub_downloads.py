@@ -23,7 +23,7 @@ def setup(tmp_path: Path):
     hub = FakeHub(tmp_path / "hub")
     connection = database.connect(tmp_path / "app.sqlite")
     database.migrate(connection)
-    repository = Repository(connection)
+    repository = Repository(connection, hub_cache_dir=hub.cache_dir)
     engine = DownloadEngine(repository, hub.stack())
     engine.start()
     try:
@@ -140,7 +140,7 @@ def test_bf16_layout_download_verifies(tmp_path: Path) -> None:
     )
     connection = database.connect(tmp_path / "app.sqlite")
     database.migrate(connection)
-    repository = Repository(connection)
+    repository = Repository(connection, hub_cache_dir=hub.cache_dir)
     engine = DownloadEngine(repository, hub.stack())
     engine.start()
     try:
@@ -218,7 +218,7 @@ def test_stop_prevents_new_jobs_and_survives_blocked_transfer(tmp_path) -> None:
     hub = FakeHub(tmp_path / "hub")
     connection = database.connect(tmp_path / "app.sqlite")
     database.migrate(connection)
-    repository = Repository(connection)
+    repository = Repository(connection, hub_cache_dir=hub.cache_dir)
     gate = threading.Event()
 
     def blocked_downloader(repo_id, filename, revision):

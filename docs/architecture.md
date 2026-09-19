@@ -95,6 +95,17 @@ selected file with `hf_hub_download()` into the SDK-resolved cache.
 Honor existing Hugging Face environment configuration and cache symlinks. Never
 pass `local_dir` or modify the user's global cache configuration.
 
+Persist model identity as repo ID, fixed commit and profile, with each Anima
+component's repo ID, fixed commit and relative file selection. Do not persist
+absolute snapshot paths in SQLite or new generation metadata. Resolve paths
+under the current SDK-configured cache when reading registrations, retrying
+downloads and reconstructing paused runs. Revalidate all profiles for library
+status, submission and queue resume; a missing pinned revision must not fall
+back to a different cached revision. The runtime handoff carries resolved local
+paths, and inference remains local-only. Migration 003 removes legacy stored
+paths while preserving registration IDs, component revisions, history and queue
+order. Existing metadata exports are retained and are not used to locate models.
+
 Resolve branches/tags to a commit before downloading. Choose configs, tokenizer
 files, safetensors, and shard indexes required by the selected profile; omit
 duplicate weight formats and unrelated training artifacts. Validate required

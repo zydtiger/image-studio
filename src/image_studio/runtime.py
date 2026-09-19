@@ -17,6 +17,8 @@ from datetime import datetime
 from pathlib import Path
 
 from image_studio import schemas
+from image_studio.hub.anima import model_problems
+from image_studio.hub.cache import problem_codes
 from image_studio.schemas import (
     ErrorCode,
     GenerationRequest,
@@ -72,9 +74,6 @@ class RuntimeCoordinator:
             # status is display state only, so a repaired snapshot (same
             # fixed commit, no auto-update) becomes ready again and a broken
             # one keeps the same typed code across retries.
-            from image_studio.hub.anima import model_problems
-            from image_studio.hub.cache import problem_codes
-
             found = model_problems(
                 Path(registration.snapshot_path),
                 registration.repo_id,
@@ -160,6 +159,7 @@ class RuntimeCoordinator:
         return run_detail_row(
             row,
             images,
+            cache_dir=self._repository.hub_cache_dir,
             queue_position=self._repository.run_queue_position(run_id),
             progress=self._progress.get(run_id),
         )
@@ -267,8 +267,26 @@ class RuntimeCoordinator:
                 if not self._repository.mark_paused_run_queued(spec.run_id):
                     continue
                 try:
+                    problems = model_problems(
+                        Path(spec.model.snapshot_path),
+                        spec.model.repo_id,
+                        spec.model.profile,
+                        spec.model.sources,
+                    )
+                    if problems:
+                        raise ImageStudioError(
+                            problem_codes(problems),
+                            "; ".join(problem.detail for problem in problems),
+                        )
                     self._runtime.submit(spec)
                     resumed += 1
+                except ImageStudioError as exc:
+                    self._finish_terminal(
+                        spec.run_id,
+                        RunStatus.FAILED,
+                        error_code=exc.code,
+                        error_message=exc.message,
+                    )
                 except Exception as exc:
                     logger.exception("failed to resume run %s", spec.run_id)
                     self._repository.fail_run(spec.run_id, ErrorCode.INTERNAL, str(exc))
@@ -446,7 +464,6 @@ class RuntimeCoordinator:
                 "commit_sha": row["commit_sha"],
                 "profile": row["profile"],
                 "dtype": row["dtype"],
-                "snapshot_path": row["snapshot_path"],
                 "sources": json.loads(row["sources"]),
             },
             "gpu": {"uuid": row["gpu_uuid"], "name": row["gpu_name"]},

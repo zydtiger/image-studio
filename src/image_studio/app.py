@@ -108,7 +108,8 @@ def create_app(
         ensure_runtime_dirs(settings)
         connection = database.connect(settings.database_file)
         database.migrate(connection)
-        repository = Repository(connection)
+        hub_stack = hub if hub is not None else HubStack.real(settings.hub_cache_dir)
+        repository = Repository(connection, hub_cache_dir=hub_stack.cache_dir)
         interrupted, paused = repository.reconcile_runs()
         repository.reconcile_downloads()
         if interrupted or paused:
@@ -117,7 +118,6 @@ def create_app(
                 interrupted,
                 paused,
             )
-        hub_stack = hub if hub is not None else HubStack.real(settings.hub_cache_dir)
         logged_in, username = hub_stack.clients.whoami()
         active_runtime = runtime if runtime is not None else _build_real_runtime()
         artifacts = ArtifactStore(

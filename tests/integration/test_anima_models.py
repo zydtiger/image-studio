@@ -86,7 +86,12 @@ def test_original_checkpoint_download_register_generate(harness, profile):
     assert [image["seed"] for image in result["images"]] == [11, 12]
     data_dir = harness.client.app.state.app_state.settings.outputs_dir
     metadata = next(data_dir.rglob("metadata.json"))
-    assert json.loads(metadata.read_text())["model"]["sources"] == result["sources"]
+    model_metadata = json.loads(metadata.read_text())["model"]
+    assert "snapshot_path" not in model_metadata
+    assert model_metadata["sources"] == [
+        {key: value for key, value in source.items() if key != "snapshot_path"}
+        for source in result["sources"]
+    ]
 
 
 def test_missing_shared_component_disables_registration_and_submission(harness):
@@ -245,6 +250,6 @@ def test_registration_and_generation_accept_symlinked_hf_cache(tmp_path, xdg_env
     with harness.client:
         registration = register(harness, profile, hit.commit_sha)
         assert registration["sources"][0]["snapshot_path"] == str(primary)
-        assert registration["snapshot_path"] == str(hit.path)
+        assert registration["snapshot_path"] == str(primary)
         run = harness.submit(registration["id"], prompt="a mountain landscape")
         assert harness.wait_terminal(run["run_id"])["status"] == "completed"
