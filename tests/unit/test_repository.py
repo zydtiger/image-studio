@@ -192,6 +192,28 @@ def test_filters_has_images_and_exclude_empty_cancelled(repo: Repository) -> Non
     assert total == 2 and [run.run_id for run in runs] == ["bb" * 16]
 
 
+@pytest.mark.parametrize("has_images", [None, True])
+def test_listing_counts_completed_images_per_run(repo: Repository, has_images: bool | None) -> None:
+    registration = _registration(repo)
+    expected = {}
+    for run_id, count in (("aa" * 16, 2), ("bb" * 16, 1), ("cc" * 16, 0)):
+        repo.create_run(_spec(registration.id, run_id=run_id))
+        repo.mark_run_running(run_id)
+        for index in range(1, count + 1):
+            repo.complete_image(run_id, s.artifact_id(index), width=256, height=256, size_bytes=10)
+        repo.finish_run(
+            run_id,
+            s.RunStatus.COMPLETED if count == 2 else s.RunStatus.CANCELLED,
+            cancel_pending=True,
+        )
+        if not has_images or count:
+            expected[run_id] = (count, s.artifact_id(count) if count else None)
+
+    runs, total = repo.list_runs(RunFilters(has_images=has_images))
+    assert total == len(expected)
+    assert {run.run_id: (run.completed_count, run.preview_artifact_id) for run in runs} == expected
+
+
 def test_registration_lifecycle_and_guards(repo: Repository) -> None:
     registration = _registration(repo)
     repo.create_run(_spec(registration.id))

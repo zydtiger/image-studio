@@ -454,7 +454,8 @@ class Repository:
                 row["run_id"]: row["n"]
                 for row in self._connection.execute(
                     "SELECT run_id, COUNT(*) AS n FROM images"
-                    f" WHERE run_id IN ({placeholders}) AND status = 'completed'",
+                    f" WHERE run_id IN ({placeholders}) AND status = 'completed'"
+                    " GROUP BY run_id",
                     [row["run_id"] for row in rows],
                 )
             }

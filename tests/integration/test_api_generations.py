@@ -26,6 +26,37 @@ def test_submit_freezes_settings_and_completes(harness) -> None:
     assert urls["thumbnail_url"].endswith("/thumbnail")
 
 
+def test_multiple_run_previews_match_completed_images(harness) -> None:
+    registration = harness.register_model()
+    expected = {}
+    for count in (2, 1):
+        submitted = harness.submit(registration["id"], count=count)
+        detail = harness.wait_terminal(submitted["run_id"])
+        assert detail["status"] == "completed"
+        expected[detail["run_id"]] = detail
+
+    response = harness.client.get(
+        "/api/generations", params={"model": registration["repo_id"], "has_images": "true"}
+    )
+    assert response.status_code == 200
+    listing = response.json()
+    assert listing["total"] == 2
+    assert {run["run_id"] for run in listing["runs"]} == set(expected)
+    for run in listing["runs"]:
+        completed = {
+            image["artifact_id"]: image
+            for image in expected[run["run_id"]]["images"]
+            if image["status"] == "completed"
+        }
+        assert run["completed_count"] == len(completed)
+        assert run["preview_artifact_id"] in completed
+        thumbnail = harness.client.get(completed[run["preview_artifact_id"]]["thumbnail_url"])
+        assert thumbnail.status_code == 200
+        assert thumbnail.headers["content-type"] == "image/webp"
+        with Image.open(io.BytesIO(thumbnail.content)) as image:
+            assert image.format == "WEBP"
+
+
 def test_profile_defaults_and_rejections(harness) -> None:
     registration = harness.register_model("Tongyi-MAI/Z-Image-Turbo", profile="z-image-turbo")
     detail = harness.submit(registration["id"], count=1)
