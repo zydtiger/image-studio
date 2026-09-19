@@ -815,7 +815,11 @@ describe("GeneratePage", () => {
     await waitForForm();
     await waitFor(() =>
       expect(generationsApi.listRuns).toHaveBeenCalledWith(
-        expect.objectContaining({ model: "Tongyi-MAI/Z-Image", limit: 8 }),
+        expect.objectContaining({
+          model: "Tongyi-MAI/Z-Image",
+          has_images: true,
+          limit: 8,
+        }),
         expect.anything(),
       ),
     );
@@ -867,7 +871,10 @@ describe("GeneratePage", () => {
     expect(screen.getByLabelText("Model")).toHaveValue("reg-turbo");
     await waitFor(() =>
       expect(generationsApi.listRuns).toHaveBeenCalledWith(
-        expect.objectContaining({ model: "Tongyi-MAI/Z-Image-Turbo" }),
+        expect.objectContaining({
+          model: "Tongyi-MAI/Z-Image-Turbo",
+          has_images: true,
+        }),
         expect.anything(),
       ),
     );
@@ -1121,6 +1128,7 @@ describe("GeneratePage", () => {
       const lastCall = generationsApi.listRuns.mock.calls.at(-1)?.[0];
       expect(lastCall).toMatchObject({
         model: "Tongyi-MAI/Z-Image",
+        has_images: true,
         limit: 8,
         offset: 8 * (click + 1),
       });

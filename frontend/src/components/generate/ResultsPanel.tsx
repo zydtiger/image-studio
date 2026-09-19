@@ -312,8 +312,8 @@ export function ResultsPanel({
             </p>
           ) : modelRuns.runs.length === 0 ? (
             <EmptyState
-              title="No runs yet"
-              description={`Runs generated with ${modelRuns.repoId} appear here.`}
+              title="No results yet"
+              description={`Runs with completed images from ${modelRuns.repoId} appear here.`}
             />
           ) : (
             <>

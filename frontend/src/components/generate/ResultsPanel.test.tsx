@@ -599,7 +599,12 @@ describe("ResultsPanel model run list", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("No runs yet")).toBeInTheDocument();
+    expect(screen.getByText("No results yet")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Runs with completed images from Tongyi-MAI/Z-Image appear here.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText("No run selected")).toBeNull();
   });
 

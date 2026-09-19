@@ -266,6 +266,8 @@ export interface FakeApi {
   startNextRun(): void;
   finishCurrentRun(): void;
   failCurrentRun(code?: string, message?: string): void;
+  /** Hand a seeded running run to the worker as its current run. */
+  adoptRunningRun(runId: string): void;
   /** Server restart: unload, pause the queue, interrupt active work. */
   simulateRestart(): void;
   setAutoStart(enabled: boolean): void;
@@ -293,6 +295,38 @@ async function jsonResponse(route: Route, status: number, body: unknown) {
     contentType: "application/json",
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * Query spellings FastAPI accepts for booleans, case-insensitive; the
+ * real API rejects anything else with 422, so the fake must too.
+ */
+const BOOLEAN_QUERY_VALUES: Record<string, boolean> = {
+  true: true,
+  "1": true,
+  on: true,
+  yes: true,
+  t: true,
+  y: true,
+  false: false,
+  "0": false,
+  off: false,
+  no: false,
+  f: false,
+  n: false,
+};
+
+/** One boolean query parameter: undefined when omitted, null when invalid. */
+function booleanQuery(
+  query: URLSearchParams,
+  name: string,
+): boolean | null | undefined {
+  const raw = query.get(name);
+  if (raw === null) return undefined;
+  // A plain-object lookup can surface inherited keys (e.g. "constructor");
+  // only own boolean values count.
+  const value = BOOLEAN_QUERY_VALUES[raw.toLowerCase()];
+  return typeof value === "boolean" ? value : null;
 }
 
 export async function installFakeApi(
@@ -687,6 +721,27 @@ export async function installFakeApi(
       run.finished_at = NOW();
       state.runtime.current_run_id = null;
       state.runtime.state = "idle";
+    },
+    adoptRunningRun(runId) {
+      const run = state.runs.get(runId);
+      if (run === undefined || run.status !== "running") return;
+      const registration = state.registrations.get(run.registration_id);
+      const gpu = gpuByUuid(run.gpu_uuid ?? "");
+      state.runtime.current_run_id = run.run_id;
+      state.runtime.state = "generating";
+      if (registration !== undefined) {
+        state.runtime.resident = {
+          registration_id: registration.id,
+          repo_id: registration.repo_id,
+          commit_sha: registration.commit_sha,
+          profile: registration.profile,
+          dtype: "bfloat16",
+          gpu: {
+            uuid: run.gpu_uuid ?? "",
+            name: gpu?.name ?? run.gpu_uuid ?? "",
+          },
+        };
+      }
     },
     failCurrentRun(code = "worker_error", message = "Fake worker crash.") {
       state.failNextRunWith = { code, message };
@@ -1233,7 +1288,7 @@ export async function installFakeApi(
       }
       if (method === "GET" && path === "/generations") {
         // Contract validation: limit 1..200, offset >= 0, trashed only
-        // "exclude" (default) or "only".
+        // "exclude" (default) or "only", boolean filters FastAPI-parsable.
         const trashedParam = query.get("trashed");
         if (
           trashedParam !== null &&
@@ -1244,6 +1299,28 @@ export async function installFakeApi(
             route,
             422,
             errorBody("validation", "trashed must be 'exclude' or 'only'."),
+          );
+        }
+        const hasImages = booleanQuery(query, "has_images");
+        if (hasImages === null) {
+          return jsonResponse(
+            route,
+            422,
+            errorBody("validation", "has_images must be a boolean."),
+          );
+        }
+        const excludeEmptyCancelled = booleanQuery(
+          query,
+          "exclude_empty_cancelled",
+        );
+        if (excludeEmptyCancelled === null) {
+          return jsonResponse(
+            route,
+            422,
+            errorBody(
+              "validation",
+              "exclude_empty_cancelled must be a boolean.",
+            ),
           );
         }
         const limitRaw = query.get("limit") ?? "24";
@@ -1272,6 +1349,9 @@ export async function installFakeApi(
         const model = query.get("model");
         const favorite = query.get("favorite") === "true";
         const trashedOnly = trashedParam === "only";
+        const statusFilter = status !== null && status !== "";
+        const hasCompletedImage = (run: FakeRun) =>
+          run.images.some((image) => image.status === "completed");
         const filtered = runs
           .filter((run) => (trashedOnly ? run.trashed : !run.trashed))
           .filter((run) =>
@@ -1284,6 +1364,19 @@ export async function installFakeApi(
             model === null || model === "" ? true : run.repo_id === model,
           )
           .filter((run) => (favorite ? run.favorite : true))
+          .filter((run) =>
+            hasImages === undefined
+              ? true
+              : hasImages === hasCompletedImage(run),
+          )
+          // An explicit status filter wins over the default exclusion,
+          // exactly like repository.py's list_runs.
+          .filter(
+            (run) =>
+              excludeEmptyCancelled !== true ||
+              statusFilter ||
+              !(run.status === "cancelled" && !hasCompletedImage(run)),
+          )
           // Newest first; the run id (which embeds the insertion counter)
           // breaks created_at ties deterministically for seeded runs.
           .sort(
@@ -1342,9 +1435,16 @@ export async function installFakeApi(
           );
         }
         if (run.status === "queued") {
-          run.status = "cancelled";
+          // Mirrors the backend: only pending images are cancelled, and a
+          // run with completed images finishes partial instead.
+          for (const image of run.images) {
+            if (image.status === "pending") image.status = "cancelled";
+          }
+          const completed = run.images.filter(
+            (i) => i.status === "completed",
+          ).length;
+          run.status = completed > 0 ? "partial" : "cancelled";
           run.finished_at = NOW();
-          for (const image of run.images) image.status = "cancelled";
           state.queue = state.queue.filter((id) => id !== run.run_id);
         } else if (run.status === "running") {
           run.cancel_requested = true;

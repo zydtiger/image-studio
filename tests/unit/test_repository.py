@@ -144,6 +144,54 @@ def test_filters_search_favorite_trashed(repo: Repository) -> None:
     assert total == 1 and runs[0].run_id == "aa" * 16
 
 
+def test_filters_has_images_and_exclude_empty_cancelled(repo: Repository) -> None:
+    registration = _registration(repo)
+    # completed run with two images
+    repo.create_run(_spec(registration.id, run_id="aa" * 16))
+    repo.mark_run_running("aa" * 16)
+    for artifact in ("image-001", "image-002"):
+        repo.complete_image("aa" * 16, artifact, width=256, height=256, size_bytes=10)
+    repo.finish_run("aa" * 16, s.RunStatus.COMPLETED)
+    # cancelled run without images
+    repo.create_run(_spec(registration.id, run_id="bb" * 16, created_offset_min=1))
+    repo.finish_run("bb" * 16, s.RunStatus.CANCELLED, cancel_pending=True)
+    # failed run without images
+    repo.create_run(_spec(registration.id, run_id="cc" * 16, created_offset_min=2))
+    repo.finish_run("cc" * 16, s.RunStatus.FAILED, cancel_pending=True)
+    # active run with one saved image
+    repo.create_run(_spec(registration.id, run_id="dd" * 16, created_offset_min=3))
+    repo.mark_run_running("dd" * 16)
+    repo.complete_image("dd" * 16, "image-001", width=256, height=256, size_bytes=10)
+
+    # The unfiltered default still returns everything.
+    runs, total = repo.list_runs(RunFilters())
+    assert total == 4
+    assert {run.run_id for run in runs} == {"aa" * 16, "bb" * 16, "cc" * 16, "dd" * 16}
+
+    runs, total = repo.list_runs(RunFilters(exclude_empty_cancelled=True))
+    assert total == 3
+    assert {run.run_id for run in runs} == {"aa" * 16, "cc" * 16, "dd" * 16}
+
+    runs, total = repo.list_runs(RunFilters(has_images=True))
+    assert total == 2
+    assert {run.run_id for run in runs} == {"aa" * 16, "dd" * 16}
+
+    runs, total = repo.list_runs(RunFilters(has_images=False))
+    assert total == 2
+    assert {run.run_id for run in runs} == {"bb" * 16, "cc" * 16}
+
+    # An explicit cancelled status filter overrides the default exclusion.
+    runs, total = repo.list_runs(
+        RunFilters(status=s.RunStatus.CANCELLED, exclude_empty_cancelled=True)
+    )
+    assert total == 1 and runs[0].run_id == "bb" * 16
+
+    # Filters apply before LIMIT/OFFSET: paging moves over the filtered
+    # set (newest first: cc then bb), not the raw table.
+    runs, total = repo.list_runs(RunFilters(has_images=False, limit=1, offset=1))
+    assert total == 2 and [run.run_id for run in runs] == ["bb" * 16]
+
+
 def test_registration_lifecycle_and_guards(repo: Repository) -> None:
     registration = _registration(repo)
     repo.create_run(_spec(registration.id))

@@ -177,6 +177,54 @@ def test_favorite_trash_restore_and_listing(harness) -> None:
     assert harness.client.get("/api/generations").json()["total"] == 1
 
 
+def test_listing_image_filters_hide_only_empty_cancelled_runs(harness) -> None:
+    registration = harness.register_model()
+    # failed run without images
+    harness.runtime.fail_image_at = 1
+    failed = harness.submit(registration["id"], count=1, prompt="failed empty")
+    assert harness.wait_terminal(failed["run_id"])["status"] == "failed"
+    harness.runtime.fail_image_at = None
+    # completed run with images
+    with_images = harness.submit(registration["id"], count=1, prompt="with images")
+    assert harness.wait_terminal(with_images["run_id"])["status"] == "completed"
+    # cancelled while queued: no images; long run keeps the worker busy
+    harness.runtime.image_delay = 0.05
+    long_run = harness.submit(registration["id"], count=4, prompt="long run")
+    queued = harness.submit(registration["id"], count=1, prompt="cancelled empty")
+    cancelled = harness.client.post(f"/api/generations/{queued['run_id']}/cancel")
+    assert cancelled.status_code == 202
+    assert cancelled.json()["status"] == "cancelled"
+    assert harness.wait_terminal(long_run["run_id"])["status"] == "completed"
+
+    def prompts(**params: str) -> tuple[set[str], int]:
+        listing = harness.client.get("/api/generations", params=params).json()
+        return {run["prompt"] for run in listing["runs"]}, listing["total"]
+
+    # Default listing behavior is unchanged: every run is returned.
+    seen, total = prompts()
+    assert total == 4
+    assert seen == {"failed empty", "with images", "long run", "cancelled empty"}
+
+    # The library default hides only the empty cancellation.
+    seen, total = prompts(exclude_empty_cancelled="true")
+    assert total == 3
+    assert seen == {"failed empty", "with images", "long run"}
+
+    # An explicit cancelled status filter exposes it again.
+    seen, total = prompts(status="cancelled", exclude_empty_cancelled="true")
+    assert total == 1 and seen == {"cancelled empty"}
+
+    # has_images is tri-state: true requires, false forbids a completed
+    # image, and the filtered total drives LIMIT/OFFSET paging.
+    seen, total = prompts(has_images="true")
+    assert total == 2 and seen == {"with images", "long run"}
+    listing = harness.client.get(
+        "/api/generations", params={"has_images": "false", "limit": 1, "offset": 1}
+    ).json()
+    assert listing["total"] == 2
+    assert [run["prompt"] for run in listing["runs"]] == ["failed empty"]
+
+
 def test_trash_active_run_conflict(harness) -> None:
     registration = harness.register_model()
     harness.runtime.image_delay = 0.05

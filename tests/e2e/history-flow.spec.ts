@@ -1,3 +1,7 @@
+import { mkdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { expect, test } from "./fixtures/app";
 
 /**
@@ -5,6 +9,17 @@ import { expect, test } from "./fixtures/app";
  * restore, parameter reuse (including forced GPU reselection), and
  * missing previews.
  */
+
+/** Gitignored local visual-review shots for the default-view change. */
+const REVIEW_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../.artifacts/ui-review/history-view",
+);
+
+function reviewShot(name: string): string {
+  mkdirSync(REVIEW_DIR, { recursive: true });
+  return path.join(REVIEW_DIR, name);
+}
 
 test.beforeEach(async ({ page, fakeApi }) => {
   test.skip(fakeApi === null, "transport fixtures only");
@@ -128,6 +143,45 @@ test("trashes and restores a run", async ({ page }) => {
     page.locator(".run-card").filter({ hasText: "a quiet harbor at dawn" }),
   ).toBeHidden({ timeout: 5_000 });
   await expect(page.getByText("a deleted valley")).toBeVisible();
+});
+
+test("hides cancelled runs without images in the default view only", async ({
+  page,
+  fakeApi,
+}) => {
+  fakeApi!.seedRun({ prompt: "a cancelled ghost", status: "cancelled" });
+  fakeApi!.seedRun({
+    prompt: "a cancelled discard",
+    status: "cancelled",
+    trashed: true,
+  });
+  await page.goto("/#/history");
+
+  // The default view keeps the failed run with its error but hides the
+  // cancellation that produced nothing.
+  const failedCard = page.locator(".run-card").filter({
+    hasText: "a broken render",
+  });
+  await expect(failedCard.getByText("Failed")).toBeVisible();
+  await expect(page.getByText("a cancelled ghost")).toBeHidden();
+  await page.screenshot({
+    path: reviewShot("history-default-view.png"),
+    fullPage: true,
+  });
+
+  // The explicit Cancelled filter exposes the hidden record.
+  await page.getByLabel("Status", { exact: true }).selectOption("cancelled");
+  await expect(page.getByText("a cancelled ghost")).toBeVisible();
+  await page.screenshot({
+    path: reviewShot("history-cancelled-filter.png"),
+    fullPage: true,
+  });
+
+  // The Trash view remains fully inspectable, cancellations included.
+  await page.getByRole("button", { name: "Trash" }).click();
+  await expect(page.getByText("a cancelled discard")).toBeVisible({
+    timeout: 5_000,
+  });
 });
 
 test("reuses parameters and forces GPU reselection when the GPU is gone", async ({

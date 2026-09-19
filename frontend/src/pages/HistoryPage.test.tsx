@@ -223,6 +223,40 @@ describe("HistoryPage", () => {
     });
   });
 
+  it("scopes the empty-cancellation filter to the default library view", async () => {
+    generationsApi.listRuns.mockResolvedValue({ runs: [], total: 0 });
+    renderHistory([]);
+
+    await screen.findByText("No runs");
+    // Default library view: cancelled runs without images are hidden.
+    expect(generationsApi.listRuns.mock.calls[0]?.[0]).toMatchObject({
+      exclude_empty_cancelled: true,
+    });
+    expect(screen.getByLabelText("Status")).toHaveValue("");
+    expect(screen.getByText("Default view")).toBeInTheDocument();
+
+    // Any explicit status (including Cancelled) exposes every run.
+    fireEvent.change(screen.getByLabelText("Status"), {
+      target: { value: "cancelled" },
+    });
+    await waitFor(() => {
+      const params = generationsApi.listRuns.mock.calls.at(-1)?.[0];
+      expect(params?.status).toBe("cancelled");
+      expect(params?.exclude_empty_cancelled).toBeUndefined();
+    });
+
+    // The Trash view is always fully inspectable.
+    fireEvent.change(screen.getByLabelText("Status"), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Trash" }));
+    await waitFor(() => {
+      const params = generationsApi.listRuns.mock.calls.at(-1)?.[0];
+      expect(params?.trashed).toBe("only");
+      expect(params?.exclude_empty_cancelled).toBeUndefined();
+    });
+  });
+
   it("reuses parameters by navigating to Generate with a payload", async () => {
     generationsApi.getRun.mockResolvedValue(detail({}));
     renderHistory([summary({ run_id: "run-0001" })]);

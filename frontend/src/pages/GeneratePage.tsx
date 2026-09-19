@@ -96,12 +96,13 @@ export default function GeneratePage() {
   // Read once per mount: the registration selected in the previous visit.
   const [storedRegistrationId] = useState(() => readStoredRegistrationId());
 
-  // Results browsing is scoped to the selected model: recent runs come from
-  // the API (newest first, non-trashed), and the newest run is followed by
-  // default. `modelRuns` carries the repo it belongs to so a late response
-  // for a previous model can never leak into the current view. Pages are
-  // requested by offset in API-bounded slices; every request stays at the
-  // page size, so no amount of Load more can exceed the API limit ceiling.
+  // Results browsing is scoped to the selected model: recent runs with at
+  // least one completed image come from the API (newest first,
+  // non-trashed), and the newest run is followed by default. `modelRuns`
+  // carries the repo it belongs to so a late response for a previous
+  // model can never leak into the current view. Pages are requested by
+  // offset in API-bounded slices; every request stays at the page size,
+  // so no amount of Load more can exceed the API limit ceiling.
   const [modelRuns, setModelRuns] = useState<{
     repoId: string;
     runs: RunSummary[];
@@ -292,11 +293,13 @@ export default function GeneratePage() {
   });
 
   // First page (and every refresh) of the selected model's runs, newest
-  // first and non-trashed. A refresh re-reads everything already loaded in
-  // API-bounded chunks (at most MODEL_RUNS_REFRESH_MAX per request), so
-  // records on deeper loaded pages update too; a Load more that lands
-  // mid-refresh keeps its deeper records. The schedule is keyed by repo
-  // (and refresh) and aborted on any change, so a straggler response for a
+  // first, non-trashed, and only runs that already saved a completed
+  // image — queued or failed runs with no images stay in History and the
+  // Queue. A refresh re-reads everything already loaded in API-bounded
+  // chunks (at most MODEL_RUNS_REFRESH_MAX per request), so records on
+  // deeper loaded pages update too; a Load more that lands mid-refresh
+  // keeps its deeper records. The schedule is keyed by repo (and
+  // refresh) and aborted on any change, so a straggler response for a
   // previous model is discarded before it can reach state. Errors are
   // keyed by repo and stay visible until a later attempt succeeds.
   useEffect(() => {
@@ -315,7 +318,7 @@ export default function GeneratePage() {
         for (let offset = 0; offset < depth; offset += MODEL_RUNS_REFRESH_MAX) {
           const limit = Math.min(MODEL_RUNS_REFRESH_MAX, depth - offset);
           const result = await listRuns(
-            { model: selectedRepoId, limit, offset },
+            { model: selectedRepoId, has_images: true, limit, offset },
             signal,
           );
           if (signal.aborted) return;
@@ -370,6 +373,7 @@ export default function GeneratePage() {
     listRuns(
       {
         model: modelRunsMore.repoId,
+        has_images: true,
         limit: MODEL_RUNS_PAGE_SIZE,
         offset: modelRunsMore.offset,
       },

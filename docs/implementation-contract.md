@@ -244,7 +244,7 @@ unknown paths fall back to the SPA.
 | POST | `/api/downloads/{id}/retry` | - | 202 `DownloadJob` | Reuses cached files |
 | POST | `/api/downloads/{id}/cancel` | - | 202 `DownloadJob` | Queued only; running -> 409 |
 | POST | `/api/generations` | `GenerationRequest` | 202 `RunDetail` | Normalization per §2; returns the frozen run. 409 while the queue is paused after a restart: resume it first |
-| GET | `/api/generations` | `?q=&status=&model=&favorite=&trashed=&limit=&offset=` | `{runs: [RunSummary], total}` | Prompt search, filters, pagination (`limit` 1-200, `offset` >= 0, `trashed` `exclude`/`only`; invalid values 422); `trashed=only` for the Trash view |
+| GET | `/api/generations` | `?q=&status=&model=&favorite=&has_images=&exclude_empty_cancelled=&trashed=&limit=&offset=` | `{runs: [RunSummary], total}` | Prompt search, filters, pagination (`limit` 1-200, `offset` >= 0, `trashed` `exclude`/`only`, boolean filters per the semantics below; invalid values 422); `trashed=only` for the Trash view |
 | GET | `/api/generations/queue` | - | `QueueState` | `paused` flag and pending order after restart |
 | POST | `/api/generations/queue/resume` | - | `QueueState` | Resumes paused queue in original FIFO order |
 | GET | `/api/generations/{run_id}` | - | `RunDetail` | 1 Hz polling while active; includes progress snapshot and queue position |
@@ -259,6 +259,21 @@ unknown paths fall back to the SPA.
 | GET | `/api/runtime` | - | `RuntimeStatus` | Resident model including its GPU, pipeline class, and dependency versions; worker state, current run, queue depth |
 | POST | `/api/runtime/eject` | - | 204 | Idle only; 409 otherwise |
 | GET | `/api/system` | - | `SystemInfo` | Effective paths, host/port, HF login state (no token values), GPUs, development flags |
+
+Run-listing filter semantics:
+
+- `has_images` is tri-state: omitted applies no image filter, `true`
+  returns only runs with at least one completed image, and `false` only
+  runs with none. A completed image is an `images` row with
+  `status = 'completed'`, independent of run status, so active runs with
+  saved images and partial runs both count.
+- `exclude_empty_cancelled=true` hides cancelled runs without completed
+  images. It defaults to `false` — omitting it changes nothing — and an
+  explicit `status` filter always wins, so `status=cancelled` exposes
+  the empty cancellations regardless.
+- All filters compose into one WHERE clause applied before `COUNT` and
+  `LIMIT`/`OFFSET`: `total` and the paginated page always describe the
+  filtered set.
 
 Frontend consumption rules:
 

@@ -58,6 +58,12 @@ class RunFilters:
     repo_id: str | None = None
     favorite: bool | None = None
     trashed: str = "exclude"  # exclude | only
+    # None applies no image filter; True requires, False forbids, a
+    # completed image.
+    has_images: bool | None = None
+    # Hides cancelled runs without completed images (the History default
+    # view); an explicit cancelled status filter overrides it.
+    exclude_empty_cancelled: bool = False
     limit: int = 50
     offset: int = 0
 
@@ -420,6 +426,18 @@ class Repository:
         if filters.favorite is not None:
             clauses.append("favorite = ?")
             values.append(1 if filters.favorite else 0)
+        has_completed_image = (
+            "EXISTS (SELECT 1 FROM images WHERE images.run_id = runs.run_id"
+            " AND images.status = 'completed')"
+        )
+        if filters.has_images is not None:
+            clauses.append(
+                has_completed_image if filters.has_images else f"NOT {has_completed_image}"
+            )
+        if filters.exclude_empty_cancelled and filters.status is None:
+            # An explicit status filter wins: asking for cancelled runs
+            # must expose their empty cancellations too.
+            clauses.append(f"(status != 'cancelled' OR {has_completed_image})")
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         with self._lock:
             total = self._connection.execute(

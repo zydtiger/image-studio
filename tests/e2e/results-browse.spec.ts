@@ -250,23 +250,25 @@ test("a completion between runtime polls updates the run list", async ({
   fakeApi,
 }) => {
   fakeApi!.addRegistration({ repo_id: "Tongyi-MAI/Z-Image" });
-  fakeApi!.setAutoStart(false);
-  // A queued run on an already-loaded deeper page is followed, then the
-  // fake dispatches and finishes it: the refresh must re-read the loaded
-  // depth, not only the first page, so the deep chip updates too.
+  fakeApi!.setStepsPerTick(1);
+  // A genuinely running run with its first image already saved sits on a
+  // deeper page behind newer finished history; the slow tick pace holds
+  // it mid-run while the page browses down to it. Only runs with saved
+  // images are listed.
   const base = fakeApi!
     .state()
     .registrations.find((entry) => entry.repo_id === "Tongyi-MAI/Z-Image")!;
-  fakeApi!.seedRun({
+  const deep = fakeApi!.seedRun({
     registrationId: base.id,
-    prompt: "old queued run",
-    status: "queued",
+    prompt: "old running run",
+    status: "running",
+    completed: 1,
+    imageCount: 2,
   });
   for (let index = 0; index < 8; index += 1) {
     fakeApi!.seedRun({
       registrationId: base.id,
-      prompt: `later queued ${index}`,
-      status: "queued",
+      prompt: `later finished ${index}`,
     });
   }
 
@@ -279,11 +281,15 @@ test("a completion between runtime polls updates the run list", async ({
   await expect(results.locator(".model-run")).toHaveCount(9, {
     timeout: 10_000,
   });
-  const deepChip = results.getByTitle("old queued run", { exact: true });
+  const deepChip = results.getByTitle("old running run", { exact: true });
+  await expect(deepChip).toContainText("Running");
   await deepChip.click();
   await expect(deepChip).toHaveAttribute("aria-pressed", "true");
 
-  fakeApi!.startNextRun();
+  // Hand the seeded run to the worker, then finish it: the refresh must
+  // re-read the loaded depth, not only the first page, so the deep chip
+  // updates too.
+  fakeApi!.adoptRunningRun(deep.run_id);
   fakeApi!.finishCurrentRun();
 
   await expect(
@@ -299,17 +305,21 @@ test("cancelling an unfollowed run updates its older-page chip", async ({
   const base = fakeApi!
     .state()
     .registrations.find((entry) => entry.repo_id === "Tongyi-MAI/Z-Image")!;
-  fakeApi!.setAutoStart(false);
-  fakeApi!.seedRun({
+  fakeApi!.setStepsPerTick(1);
+  // A running run with a saved image on a deeper page, behind newer
+  // finished history. Cancelling it must retain the image and finish the
+  // run partial, exactly like the real backend.
+  const deep = fakeApi!.seedRun({
     registrationId: base.id,
     prompt: "old cancellation",
-    status: "queued",
+    status: "running",
+    completed: 1,
+    imageCount: 2,
   });
   for (let index = 0; index < 8; index += 1) {
     fakeApi!.seedRun({
       registrationId: base.id,
-      prompt: `newer pending ${index}`,
-      status: "queued",
+      prompt: `newer finished ${index}`,
     });
   }
 
@@ -320,17 +330,20 @@ test("cancelling an unfollowed run updates its older-page chip", async ({
   });
   await results.getByRole("button", { name: /load more/i }).click();
   const deepChip = results.getByTitle("old cancellation", { exact: true });
-  await expect(deepChip).toContainText("Queued");
+  await expect(deepChip).toContainText("Running");
 
-  // The run is never followed; cancelling it from the queue must still
-  // refresh the deep loaded page.
-  await page
+  // The run is never followed; cancelling it from the queue's active row
+  // must still refresh the deep loaded page.
+  fakeApi!.adoptRunningRun(deep.run_id);
+  const activeRow = page
     .getByLabel("Generation queue")
     .getByRole("listitem")
-    .filter({ hasText: "old cancellation" })
+    .filter({ hasText: "old cancellation" });
+  await expect(activeRow).toBeVisible({ timeout: 10_000 });
+  await activeRow
     .getByRole("button", { name: "Cancel", exact: true })
     .click();
-  await expect(deepChip).toContainText("Cancelled", { timeout: 5_000 });
+  await expect(deepChip).toContainText("Partial", { timeout: 10_000 });
 });
 
 test("a completion hidden from runtime polls still updates the run list", async ({
@@ -356,18 +369,20 @@ test("a completion hidden from runtime polls still updates the run list", async 
     .getByRole("button", { name: "Generate", exact: true })
     .click();
 
-  const results = page.getByLabel("Run results");
-  const chip = results.getByTitle("quick completion", { exact: true });
-  await expect(chip).toContainText("Queued");
-
   fakeApi!.startNextRun();
   fakeApi!.finishCurrentRun();
   releaseDetail();
 
   // The detail view and the list chip both reach the terminal state even
-  // though no poll ever observed the run as active.
-  await expect(results.getByText("Completed", { exact: true }).first()).toBeVisible();
-  await expect(chip).toContainText("Completed", { timeout: 5_000 });
+  // though no poll ever observed the run as active; the chip joins the
+  // list together with its completed image.
+  const results = page.getByLabel("Run results");
+  await expect(
+    results.getByText("Completed", { exact: true }).first(),
+  ).toBeVisible({ timeout: 10_000 });
+  const chip = results.getByTitle("quick completion", { exact: true });
+  await expect(chip).toBeVisible({ timeout: 10_000 });
+  await expect(chip).toContainText("Completed");
 });
 
 test("a late submission response respects a newer model selection", async ({

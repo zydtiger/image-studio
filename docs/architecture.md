@@ -14,7 +14,12 @@ Use four English-language pages:
 - **Generate:** registered model, GPU, Unicode prompt, supported negative
   prompt, size, seed, image count, steps, and applicable guidance. Show the
   global queue, loaded model, Eject, progress, and results. A form change does
-  not load a model; submission freezes the requested settings.
+  not load a model; submission freezes the requested settings. The results
+  gallery lists the selected model's runs newest first and only those that
+  already saved a completed image (completed, partial, or active with saved
+  images). The Queue panel continues to show pending and running tasks. The
+  followed run's detail retains progress, cancellation, and failure feedback
+  even when it has no images.
 - **Models:** Discover searches Hugging Face and shows model cards, licenses,
   revisions, access restrictions, and compatibility. My Models contains
   application registrations. Local Cache discovers all cached model repos,
@@ -22,7 +27,10 @@ Use four English-language pages:
   registers it; removing a registration never deletes shared weights.
 - **History:** image gallery, prompt search, model/favorite filters, run details,
   parameter reuse, downloads, favorites, and recoverable Trash. Retain failed,
-  cancelled, and partially completed runs.
+  cancelled, and partially completed runs: every record is stored. The default
+  Library view hides cancelled runs without completed images; an explicit
+  status filter (Cancelled) and the Trash view expose them again, and failed
+  runs without images stay visible with their errors.
 - **Settings:** effective paths, host/port, Hugging Face login status without
   token values, GPU information, and resident-model status. Configuration
   changes require restart; no live data migration in v1.

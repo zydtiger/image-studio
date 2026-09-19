@@ -15,6 +15,10 @@ export interface RunListParams {
   favorite?: boolean;
   /** "only" selects the Trash view; otherwise non-trashed runs. */
   trashed?: "only";
+  /** true requires and false forbids a completed image; omitted filters nothing. */
+  has_images?: boolean;
+  /** Hides cancelled runs without completed images (History default view). */
+  exclude_empty_cancelled?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -34,6 +38,15 @@ export function listRuns(
   if (params.model) search.set("model", params.model);
   if (params.favorite) search.set("favorite", "true");
   if (params.trashed) search.set("trashed", params.trashed);
+  if (params.has_images !== undefined) {
+    search.set("has_images", String(params.has_images));
+  }
+  if (params.exclude_empty_cancelled !== undefined) {
+    search.set(
+      "exclude_empty_cancelled",
+      String(params.exclude_empty_cancelled),
+    );
+  }
   search.set("limit", String(params.limit ?? 24));
   search.set("offset", String(params.offset ?? 0));
   return apiFetch<RunListResult>(`/generations?${search.toString()}`, {

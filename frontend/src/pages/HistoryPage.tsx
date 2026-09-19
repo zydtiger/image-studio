@@ -32,7 +32,9 @@ type ViewMode = "library" | "trash";
 /**
  * Run history with prompt search, filters, favorites, parameter reuse,
  * and the recoverable Trash view. Failed, cancelled, partial, and
- * interrupted runs are all retained.
+ * interrupted runs are all retained: the default Library view hides only
+ * cancelled runs without images; an explicit status filter (and the Trash
+ * view) exposes every record.
  */
 export default function HistoryPage() {
   const navigate = useNavigate();
@@ -60,6 +62,10 @@ export default function HistoryPage() {
     model: model === "" ? undefined : model,
     favorite: favoriteOnly ? true : undefined,
     trashed: view === "trash" ? "only" : undefined,
+    // The default Library view hides cancelled runs without images; any
+    // explicit status (including Cancelled) and the Trash view show all.
+    exclude_empty_cancelled:
+      view === "library" && status === "" ? true : undefined,
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
   };
@@ -150,7 +156,7 @@ export default function HistoryPage() {
               setPage(0);
             }}
           >
-            <option value="">Any status</option>
+            <option value="">Default view</option>
             {STATUS_OPTIONS.map((option) => (
               <option key={option} value={option}>
                 {option}
