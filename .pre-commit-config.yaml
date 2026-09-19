@@ -10,6 +10,8 @@ repos:
       - id: check-merge-conflict
       - id: check-toml
       - id: check-yaml
+        # pnpm stores package-manager and application locks as separate documents.
+        args: [--allow-multiple-documents]
       - id: check-json
       - id: check-executables-have-shebangs
       - id: check-shebang-scripts-are-executable
@@ -50,31 +52,31 @@ repos:
         files: ^(src/image_studio/|tests/(unit|integration)/|pyproject\.toml)
       - id: frontend-lint
         name: frontend lint
-        entry: npm --prefix frontend run lint
+        entry: pnpm --dir frontend run lint
         language: system
         pass_filenames: false
         files: ^frontend/
       - id: frontend-format
         name: frontend format check
-        entry: npm --prefix frontend run format:check
+        entry: pnpm --dir frontend run format:check
         language: system
         pass_filenames: false
         files: ^frontend/
       - id: frontend-tests
         name: frontend unit tests
-        entry: npm --prefix frontend run test
+        entry: pnpm --dir frontend run test
         language: system
         pass_filenames: false
         files: ^frontend/
       - id: e2e-typecheck
         name: e2e TypeScript typecheck
-        entry: npm --prefix tests/e2e run typecheck
+        entry: pnpm --dir tests/e2e run typecheck
         language: system
         pass_filenames: false
         files: ^tests/e2e/
       - id: e2e-test
         name: e2e browser tests
-        entry: npm --prefix tests/e2e test
+        entry: pnpm --dir tests/e2e run test
         language: system
         pass_filenames: false
         files: ^tests/e2e/

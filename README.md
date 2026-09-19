@@ -20,7 +20,8 @@ real-GPU acceptance suite exists but has not been executed.
 ## Setup
 
 Requirements: Linux x86_64, Python 3.12, uv, Node as pinned in `.node-version`,
-npm, just, and prek. A GPU is not required to develop or validate the backend.
+pnpm 12.4.2, just, and prek. A GPU is not required to develop or validate the
+backend.
 Install prek as a machine-level tool if it is unavailable, for example with
 `uv tool install prek==0.4.14`; it is not a project dependency.
 
@@ -31,8 +32,10 @@ just setup
 The root `justfile` owns the orchestration commands. `just setup` runs
 `uv sync --locked` for the base and development Python dependencies (no
 inference extra), installs the frontend and e2e Node dependencies from their
-lockfiles, and activates the prek hooks. Build recipes do not re-run setup
-or reinstall project dependencies; run `just setup` first.
+separate `pnpm-lock.yaml` files with `--frozen-lockfile`, and activates the prek
+hooks. Run `just setup` before development or tests. `just frontend`,
+`just build`, and `just serve` synchronize frontend dependencies before building;
+they do not re-run the full setup or install e2e dependencies and hooks.
 
 The optional inference environment is declared separately. It is required
 for real generation (the inference subsystem ships with the application;
@@ -50,8 +53,10 @@ That extra uses PyTorch's CUDA 13.0 index. Setup never downloads model weights.
 just serve --host 127.0.0.1 --port 7860
 ```
 
-`just serve` starts the server with the inference extra. Host and port
-default to `127.0.0.1` and `7860`; `config.toml` under the XDG config
+`just serve` synchronizes frontend dependencies, builds the frontend, then
+starts the server with the inference extra. A failed frontend build prevents
+server startup. Host and port default to `127.0.0.1` and `7860`;
+`config.toml` under the XDG config
 directory can override them, and command-line flags win over both
 (CLI > `config.toml` > defaults). Two explicit development flags are
 available and visibly identified in `/api/system` and `/api/runtime`:
@@ -68,7 +73,7 @@ real supervisor and the real Hugging Face Hub.
 ## Frontend
 
 ```sh
-npm --prefix frontend run dev
+pnpm --dir frontend run dev
 ```
 
 The Vite development server binds to loopback and proxies `/api` to a
@@ -80,10 +85,10 @@ CPU-only development stack). Building writes ignored assets to
 just build
 ```
 
-`just build` runs the frontend build and then `uv build`. The frontend build
-requires the Node dependencies from a prior `just setup`. A plain `uv build`
-does not build the frontend and requires already-built assets under
-`src/image_studio/web/static/`.
+`just frontend` synchronizes frontend dependencies from its frozen lockfile
+and builds the web assets. `just build` runs those steps and then `uv build`.
+A plain `uv build` does not build the frontend and requires already-built
+assets under `src/image_studio/web/static/`.
 
 ## Design
 

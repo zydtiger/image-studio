@@ -5,14 +5,24 @@
 Use the setup commands in the root README. `just setup` (owned by the root
 `justfile`) installs everything: `uv sync --locked` installs the core package
 and development tools without the optional inference stack, the frontend and
-e2e Node dependencies install from their lockfiles, and `prek install`
-activates the hooks. Build recipes do not re-run setup or reinstall project
-dependencies; run `just setup` first. Use `uv sync --locked --extra
-inference` when GPU implementation is required. Subsequent uv commands
-should include that extra if they need to retain it.
+e2e Node dependencies install from their frozen pnpm lockfiles, and `prek install`
+activates the hooks. Run `just setup` before development or tests. The
+`frontend-deps` recipe synchronizes frontend dependencies before `just frontend`,
+`just build`, and `just serve`; those commands do not re-run the full setup or
+install e2e dependencies and hooks. `just serve` builds the frontend before
+starting the backend. Use `uv sync --locked --extra inference` when GPU
+implementation is required. Subsequent uv commands should include that extra
+if they need to retain it.
 
 Node is pinned in the root `.node-version`. Activate it using your preferred
-version manager before `just setup`; the npm lockfiles are authoritative.
+version manager before `just setup`. Both Node projects pin pnpm 12.4.2 through
+`packageManager` in their `package.json`. The separate `frontend/pnpm-lock.yaml`
+and `tests/e2e/pnpm-lock.yaml` files are authoritative; this is not a pnpm workspace.
+Normal setup uses `pnpm install --frozen-lockfile`, which reuses installed
+dependencies and fails when a lockfile is missing or inconsistent with its
+manifest. When intentionally changing dependencies, use `pnpm --dir frontend add`
+or `pnpm --dir tests/e2e add` with the package name and commit the manifest and
+lockfile changes together.
 Python targets Linux x86_64 and Python 3.12; other platforms are not yet supported.
 
 The backend server, storage, Hub integration, HTTP API, the real inference
@@ -50,7 +60,7 @@ git ls-files --others --exclude-standard -z |
 The commit stage includes structural and whitespace checks, the uv lock check,
 Python lint/format, and frontend lint/format. The push stage builds the Python
 distribution through `just build`, which type-checks and builds the frontend
-first and includes the generated web assets. The frontend scripts own npm
+first and includes the generated web assets. The frontend scripts own Node
 commands; hooks invoke them through the package, and the root justfile owns
 the build orchestration. Commit subjects are validated at the commit-msg
 stage, not by `--all-files`.

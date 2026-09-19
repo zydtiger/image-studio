@@ -4,23 +4,25 @@
 default:
     @just --list
 
+# Synchronize frontend dependencies without changing the lockfile.
+frontend-deps:
+    pnpm --dir frontend install --frozen-lockfile
+
 # No inference extra, model weights, GPU setup, or background services.
 # Install base and development dependencies and activate the Git hooks.
-setup:
+setup: frontend-deps
     uv sync --locked
-    npm --prefix frontend ci
-    npm --prefix tests/e2e ci
+    pnpm --dir tests/e2e install --frozen-lockfile
     prek install
 
-# Build the frontend into src/image_studio/web/static/.
-frontend:
-    npm --prefix frontend run build
+# Synchronize dependencies and build into src/image_studio/web/static/.
+frontend: frontend-deps
+    pnpm --dir frontend run build
 
-# Dependencies come from a prior `just setup`; no setup or npm ci runs here.
 # Build the frontend, then the Python wheel and sdist into dist/.
 build: frontend
     uv build
 
-# Start the server with inference dependencies.
-serve *args:
+# Build the frontend and start the server with inference dependencies.
+serve *args: frontend
     uv run --locked --extra inference image-studio serve {{args}}

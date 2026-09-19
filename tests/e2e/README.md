@@ -11,12 +11,11 @@ default mode.
 Requires the frontend dependencies and this package's dependencies:
 
 ```sh
-npm --prefix frontend ci
-npm --prefix tests/e2e ci
-npm --prefix tests/e2e typecheck   # Playwright only transpiles; tsc catches
-                                   # unsupported options (e.g. route.fulfill's
-                                   # removed isBase64) at type level
-npm --prefix tests/e2e test
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir tests/e2e install --frozen-lockfile
+# Playwright only transpiles; typecheck catches unsupported options.
+pnpm --dir tests/e2e run typecheck
+pnpm --dir tests/e2e run test
 ```
 
 `@playwright/test` stays pinned at 1.62.0 because that release matches the
@@ -38,9 +37,9 @@ upgrade it without checking `~/.cache/ms-playwright`.
 --fake-hub`:
 
   ```sh
-  npm --prefix frontend run build
+  pnpm --dir frontend run build
   uv run image-studio serve --fake-runtime --fake-hub --port 7860
-  E2E_BASE_URL=http://127.0.0.1:7860 npm --prefix tests/e2e test
+  E2E_BASE_URL=http://127.0.0.1:7860 pnpm --dir tests/e2e run test
   ```
 
   Injection-dependent tests skip themselves; `real-backend.spec.ts` runs

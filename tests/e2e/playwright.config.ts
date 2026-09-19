@@ -7,9 +7,9 @@ import { defineConfig } from "@playwright/test";
  * fake API mounted through route interception. Integration mode instead
  * points at a real backend serving the built frontend:
  *
- *   npm --prefix frontend run build
+ *   pnpm --dir frontend run build
  *   uv run image-studio serve --fake-runtime --fake-hub --port 7860
- *   E2E_BASE_URL=http://127.0.0.1:7860 npm --prefix tests/e2e test
+ *   E2E_BASE_URL=http://127.0.0.1:7860 pnpm --dir tests/e2e run test
  *
  * Browser binaries come from the shared Playwright cache; this package
  * never downloads them.
@@ -31,7 +31,7 @@ export default defineConfig({
     ? undefined
     : {
         command:
-          "npm --prefix ../../frontend run dev -- --port 5199 --strictPort",
+          "pnpm --dir ../../frontend run dev --port 5199 --strictPort",
         url: "http://127.0.0.1:5199",
         reuseExistingServer: true,
         timeout: 120_000,

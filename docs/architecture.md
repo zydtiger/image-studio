@@ -161,7 +161,7 @@ image-studio/
 │   │   └── migrations/
 │   └── web/static/                                     (generated)
 ├── frontend/
-│   ├── package.json, package-lock.json
+│   ├── package.json, pnpm-lock.yaml
 │   ├── index.html, tsconfig.json, vite.config.ts, vitest.config.ts
 │   ├── eslint.config.js, .prettierrc.json, .prettierignore
 │   └── src/

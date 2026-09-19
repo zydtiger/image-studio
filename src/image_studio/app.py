@@ -283,7 +283,7 @@ class SPAStaticFiles(StaticFiles):
 
 
 def _static_root() -> Path:
-    """Built frontend assets; written by `npm --prefix frontend run build`."""
+    """Built frontend assets; written by `just frontend`."""
     return Path(__file__).parent / "web" / "static"
 
 
@@ -299,7 +299,7 @@ def _install_static(app: FastAPI) -> None:
             return _error_response(schemas.ErrorCode.NOT_FOUND, "unknown API path", None, 404)
         return _error_response(
             schemas.ErrorCode.INTERNAL,
-            "frontend assets are not built; run `npm --prefix frontend run build`",
+            "frontend assets are not built; run `just frontend`",
             None,
             503,
         )

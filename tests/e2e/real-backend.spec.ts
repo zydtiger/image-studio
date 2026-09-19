@@ -9,12 +9,12 @@ import { expect, test } from "@playwright/test";
  * point every XDG/HF path at a throwaway directory and use an unused
  * loopback port, e.g.
  *
- *   npm --prefix frontend run build
+ *   pnpm --dir frontend run build
  *   RUN=$(mktemp -d) && env XDG_CONFIG_HOME=$RUN/config XDG_DATA_HOME=$RUN/data \
  *     XDG_CACHE_HOME=$RUN/cache XDG_STATE_HOME=$RUN/state HF_HOME=$RUN/hf \
  *     uv run --locked image-studio serve --fake-runtime --fake-hub \
  *       --host 127.0.0.1 --port 7860 &
- *   E2E_BASE_URL=http://127.0.0.1:7860 npm --prefix tests/e2e test real-backend
+ *   E2E_BASE_URL=http://127.0.0.1:7860 pnpm --dir tests/e2e run test real-backend
  *
  * HUB_QUERY matches the fake Hub catalog's Z-Image repo ids.
  * Stop the server afterwards; it owns the port

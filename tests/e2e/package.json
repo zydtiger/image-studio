@@ -2,6 +2,7 @@
   "name": "image-studio-e2e",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@12.4.2",
   "type": "module",
   "description": "Playwright browser tests for the Image Studio frontend",
   "scripts": {
