@@ -35,16 +35,6 @@ export default function ModelsPage() {
         onChange={(id) => setTab(id as ModelsTab)}
         tabs={[
           {
-            id: "discover",
-            label: "Discover",
-            content: (
-              <DiscoverPanel
-                onDownloaded={() => setTab("downloads")}
-                onRegistered={() => modelsQuery.refetch()}
-              />
-            ),
-          },
-          {
             id: "library",
             label: "My Models",
             content: (
@@ -63,6 +53,16 @@ export default function ModelsPage() {
             label: "Local Cache",
             content: (
               <LocalCachePanel onRegistered={() => modelsQuery.refetch()} />
+            ),
+          },
+          {
+            id: "discover",
+            label: "Discover",
+            content: (
+              <DiscoverPanel
+                onDownloaded={() => setTab("downloads")}
+                onRegistered={() => modelsQuery.refetch()}
+              />
             ),
           },
           {
