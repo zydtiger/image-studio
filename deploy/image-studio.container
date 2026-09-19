@@ -1,0 +1,42 @@
+# Rootless deployment for beluga. Build localhost/image-studio:local first.
+# Install in ~/.config/containers/systemd/ after creating the host bind directories.
+# Stop any existing backend using the same data directory before starting this unit.
+[Unit]
+Description=Image Studio
+RequiresMountsFor=/mnt/narwhal/models/huggingface/hub
+
+[Container]
+Image=localhost/image-studio:local
+Pull=never
+ContainerName=image-studio
+
+UserNS=keep-id:uid=1000,gid=1000
+User=1000
+Group=1000
+GroupAdd=keep-groups
+
+AddDevice=nvidia.com/gpu=all
+# The application has no authentication; publish on all host IPv4 interfaces.
+PublishPort=0.0.0.0:7860:7860
+
+Environment=XDG_CONFIG_HOME=/config
+Environment=XDG_DATA_HOME=/data
+Environment=XDG_CACHE_HOME=/cache
+Environment=XDG_STATE_HOME=/state
+
+Volume=%h/.config/image-studio:/config/image-studio:ro
+Volume=%h/.local/share/image-studio:/data/image-studio:rw
+Volume=%h/.cache/image-studio:/cache/image-studio:rw
+Volume=%h/.local/state/image-studio:/state/image-studio:rw
+# Existing registrations using host snapshot paths must be re-registered.
+Volume=/mnt/narwhal/models/huggingface/hub:/cache/huggingface/hub:rw
+
+StopTimeout=180
+
+[Service]
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=210
+
+[Install]
+WantedBy=default.target
