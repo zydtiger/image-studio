@@ -522,6 +522,7 @@ class InferenceSupervisor:
             profile=spec.model.profile,
             dtype=spec.model.dtype,
             snapshot_path=spec.model.snapshot_path,
+            sources=spec.model.sources,
             gpu_uuid=spec.gpu.uuid,
             gpu_name=spec.gpu.name,
         )

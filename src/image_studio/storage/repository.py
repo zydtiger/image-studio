@@ -93,6 +93,7 @@ class Repository:
         profile: ProfileId,
         snapshot_path: str,
         display_name: str | None,
+        sources: tuple[schemas.ModelSource, ...] = (),
     ) -> schemas.ModelRegistration:
         created = utc_now_iso()
         registration_id = _new_id()
@@ -100,8 +101,8 @@ class Repository:
             with self._write() as conn:
                 conn.execute(
                     "INSERT INTO registrations (id, repo_id, commit_sha, profile,"
-                    " display_name, status, missing_files, snapshot_path, created_at)"
-                    " VALUES (?, ?, ?, ?, ?, 'ready', '[]', ?, ?)",
+                    " display_name, status, missing_files, snapshot_path, created_at, sources)"
+                    " VALUES (?, ?, ?, ?, ?, 'ready', '[]', ?, ?, ?)",
                     (
                         registration_id,
                         repo_id,
@@ -110,6 +111,7 @@ class Repository:
                         display_name,
                         snapshot_path,
                         created,
+                        _dump_sources(sources),
                     ),
                 )
         except sqlite3.IntegrityError as exc:
@@ -199,15 +201,29 @@ class Repository:
     # ----- downloads ---------------------------------------------------------
 
     def create_download(
-        self, *, repo_id: str, revision: str | None, profile: ProfileId
+        self,
+        *,
+        repo_id: str,
+        revision: str | None,
+        profile: ProfileId,
+        sources: tuple[schemas.ModelSource, ...] = (),
     ) -> DownloadJob:
         job_id = _new_id()
         created = utc_now_iso()
         with self._write() as conn:
             conn.execute(
                 "INSERT INTO downloads (id, repo_id, requested_revision, profile,"
-                " status, created_at) VALUES (?, ?, ?, ?, 'queued', ?)",
-                (job_id, repo_id, revision, profile.value, created),
+                " status, created_at, sources, resolved_commit)"
+                " VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)",
+                (
+                    job_id,
+                    repo_id,
+                    revision,
+                    profile.value,
+                    created,
+                    _dump_sources(sources),
+                    sources[0].commit_sha if sources else None,
+                ),
             )
         return self.get_download(job_id)
 
@@ -266,6 +282,39 @@ class Repository:
         values.append(job_id)
         with self._write() as conn:
             conn.execute(f"UPDATE downloads SET {', '.join(assignments)} WHERE id = ?", values)
+
+    def complete_download(self, job_id: str, snapshot_path: str) -> DownloadJob:
+        """Publish a verified download and its registration in one transaction."""
+        with self._write() as conn:
+            job = conn.execute("SELECT * FROM downloads WHERE id = ?", (job_id,)).fetchone()
+            if job is None:
+                raise NotFoundError(f"unknown download job {job_id}")
+            if job["status"] != "running" or not job["resolved_commit"]:
+                raise ValueError("only a running download with a fixed commit can complete")
+            now = utc_now_iso()
+            conn.execute(
+                "INSERT INTO registrations (id, repo_id, commit_sha, profile,"
+                " status, missing_files, snapshot_path, created_at, sources)"
+                " VALUES (?, ?, ?, ?, 'ready', '[]', ?, ?, ?)"
+                " ON CONFLICT (repo_id, profile, commit_sha) DO UPDATE SET"
+                " status = 'ready', missing_files = '[]',"
+                " snapshot_path = excluded.snapshot_path, sources = excluded.sources",
+                (
+                    _new_id(),
+                    job["repo_id"],
+                    job["resolved_commit"],
+                    job["profile"],
+                    snapshot_path,
+                    now,
+                    job["sources"],
+                ),
+            )
+            conn.execute(
+                "UPDATE downloads SET status = 'completed', error_code = NULL,"
+                " error_message = NULL, finished_at = ? WHERE id = ?",
+                (now, job_id),
+            )
+        return self.get_download(job_id)
 
     def finish_download(
         self,
@@ -346,8 +395,8 @@ class Repository:
                 "INSERT INTO runs (run_id, queue_seq, created_at, status,"
                 " registration_id, repo_id, commit_sha, profile, dtype, snapshot_path,"
                 " gpu_uuid, gpu_name, prompt, negative_prompt, width, height, steps,"
-                " guidance, initial_seed, image_count)"
-                " VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " guidance, initial_seed, image_count, sources)"
+                " VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     spec.run_id,
                     queue_seq,
@@ -368,6 +417,7 @@ class Repository:
                     spec.guidance,
                     spec.seeds[0],
                     spec.image_count,
+                    _dump_sources(spec.model.sources),
                 ),
             )
             conn.executemany(
@@ -600,6 +650,7 @@ class Repository:
                             profile=ProfileId(row["profile"]),
                             dtype=row["dtype"],
                             snapshot_path=row["snapshot_path"],
+                            sources=json.loads(row["sources"]),
                         ),
                         gpu=FrozenGpu(uuid=row["gpu_uuid"], name=row["gpu_name"]),
                         prompt=row["prompt"],
@@ -688,6 +739,7 @@ def _row_to_registration(row: sqlite3.Row) -> schemas.ModelRegistration:
         repo_id=row["repo_id"],
         commit_sha=row["commit_sha"],
         profile=ProfileId(row["profile"]),
+        sources=json.loads(row["sources"]),
         display_name=row["display_name"],
         status=RegistrationStatus(row["status"]),
         missing_files=json.loads(row["missing_files"]),
@@ -707,6 +759,7 @@ def _row_to_download(row: sqlite3.Row) -> DownloadJob:
         id=row["id"],
         repo_id=row["repo_id"],
         requested_revision=row["requested_revision"],
+        sources=json.loads(row["sources"]),
         resolved_commit=row["resolved_commit"],
         profile=ProfileId(row["profile"]),
         status=DownloadStatus(row["status"]),
@@ -773,6 +826,7 @@ def run_detail_row(
         repo_id=str(row["repo_id"]),
         commit_sha=str(row["commit_sha"]),
         profile=ProfileId(str(row["profile"])),
+        sources=json.loads(row.get("sources") or "[]"),
         dtype=str(row["dtype"]),
         gpu=gpu,
         prompt=str(row["prompt"]),
@@ -803,3 +857,7 @@ def run_detail_row(
             for image in images
         ],
     )
+
+
+def _dump_sources(sources: tuple[schemas.ModelSource, ...]) -> str:
+    return json.dumps([source.model_dump(mode="json") for source in sources])

@@ -25,7 +25,7 @@ def _request(**overrides: object) -> s.GenerationRequest:
 
 class TestProfiles:
     def test_single_truth_constants(self) -> None:
-        assert set(s.PROFILES) == {s.ProfileId.Z_IMAGE, s.ProfileId.Z_IMAGE_TURBO}
+        assert set(s.PROFILES) == set(s.ProfileId)
         base = s.PROFILES[s.ProfileId.Z_IMAGE]
         turbo = s.PROFILES[s.ProfileId.Z_IMAGE_TURBO]
         assert (base.default_steps, base.guidance_default) == (50, 4.0)

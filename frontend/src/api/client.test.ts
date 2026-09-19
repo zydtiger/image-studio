@@ -177,3 +177,22 @@ describe("errorMessage", () => {
     expect(errorMessage("strange")).toBe("An unexpected error occurred.");
   });
 });
+
+it("includes component validation details without exposing unrelated fields", () => {
+  const error = new ApiError("Cached model is incomplete", {
+    details: {
+      problems: ["shared/vae/config.json is missing", null, "", 42],
+      snapshot_path: "/cache/internal",
+    },
+    kind: "http",
+    code: "cache_incomplete",
+  });
+  expect(errorMessage(error)).toBe(
+    "Cached model is incomplete: shared/vae/config.json is missing",
+  );
+  expect(
+    errorMessage(
+      new ApiError("Failed", { kind: "http", details: { problems: {} } }),
+    ),
+  ).toBe("Failed");
+});

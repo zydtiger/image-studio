@@ -92,6 +92,7 @@ def test_cancel_queued_only(setup) -> None:
     # engine not given the id: the job stays queued
     cancelled = engine.cancel(job.id)
     assert cancelled.status is DownloadStatus.CANCELLED
+    assert repository.list_registrations() == []
     running = repository.create_download(
         repo_id="Tongyi-MAI/Z-Image-Turbo", revision="main", profile=ProfileId.Z_IMAGE_TURBO
     )
@@ -113,6 +114,7 @@ def test_verification_failure_reports_missing_files(setup, tmp_path: Path) -> No
     engine.enqueue(job.id)
     finished = _wait_status(repository, job.id, DownloadStatus.FAILED)
     assert finished.status is DownloadStatus.FAILED
+    assert repository.list_registrations() == []
     assert finished.error.code.value == "cache_incomplete"
     assert "model_index.json" in finished.error.message
 
@@ -307,4 +309,29 @@ def test_queued_cancel_is_atomic_and_normal_path_still_cancels(setup) -> None:
     )
     cancelled = engine.cancel(job.id)
     assert cancelled.status is DownloadStatus.CANCELLED
+    assert repository.list_registrations() == []
     assert repository.cancel_queued_download(job.id) is False  # not queued anymore
+
+
+def test_repeated_downloads_reuse_registration_and_preserve_name(setup):
+    repository, engine, hub = setup
+    for attempt in range(2):
+        job = repository.create_download(
+            repo_id="Tongyi-MAI/Z-Image-Turbo", revision="main", profile=ProfileId.Z_IMAGE_TURBO
+        )
+        engine.enqueue(job.id)
+        assert (
+            _wait_status(repository, job.id, DownloadStatus.COMPLETED, DownloadStatus.FAILED).status
+            is DownloadStatus.COMPLETED
+        )
+        registrations = repository.list_registrations()
+        assert len(registrations) == 1
+        registration = registrations[0]
+        assert registration.commit_sha == "b" * 40
+        assert registration.profile is ProfileId.Z_IMAGE_TURBO
+        if attempt == 0:
+            original_id = registration.id
+            repository.update_registration(registration.id, display_name="My Turbo", profile=None)
+        else:
+            assert registration.id == original_id
+            assert registration.display_name == "My Turbo"

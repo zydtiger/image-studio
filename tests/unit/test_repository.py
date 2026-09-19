@@ -59,10 +59,10 @@ def _spec(
 
 def test_migrations_set_user_version(tmp_path: Path) -> None:
     connection = database.connect(tmp_path / "app.sqlite")
-    assert database.migrate(connection) == 1
-    assert database.schema_version(connection) == 1
+    assert database.migrate(connection) == 2
+    assert database.schema_version(connection) == 2
     database.migrate(connection)  # idempotent
-    assert database.schema_version(connection) == 1
+    assert database.schema_version(connection) == 2
 
 
 def test_create_run_persists_queued_run_and_pending_images(repo: Repository) -> None:
@@ -278,8 +278,8 @@ def test_migration_failure_rolls_back_completely_and_retries(tmp_path, monkeypat
 
     # restart/retry with the real scripts applies cleanly on the same file
     monkeypatch.setattr(database, "_migration_scripts", original)
-    assert database.migrate(connection) == 1
-    assert database.schema_version(connection) == 1
+    assert database.migrate(connection) == 2
+    assert database.schema_version(connection) == 2
     assert (
         connection.execute("SELECT name FROM sqlite_master WHERE name='runs'").fetchone()
         is not None
@@ -316,3 +316,81 @@ def test_update_registration_conflict_is_atomic(tmp_path):
     assert unchanged.profile is s.ProfileId.Z_IMAGE
     assert unchanged.display_name is None
     connection.close()
+
+
+def test_sources_round_trip_and_v1_migration_preserve_old_records(repo, tmp_path):
+    source = s.ModelSource(
+        repo_id="repo/component",
+        commit_sha="d" * 40,
+        files=("model.safetensors",),
+        snapshot_path="/cache/component",
+    )
+    registration = repo.create_registration(
+        repo_id="circlestone-labs/Anima",
+        commit_sha="a" * 40,
+        profile=s.ProfileId.ANIMA_TURBO,
+        snapshot_path="/cache/primary",
+        display_name="Anima",
+        sources=(source,),
+    )
+    assert registration.sources == (source,)
+    job = repo.create_download(
+        repo_id=registration.repo_id,
+        revision="main",
+        profile=registration.profile,
+        sources=(source,),
+    )
+    assert job.sources == (source,)
+    spec = _spec(registration.id)
+    spec = spec.model_copy(update={"model": spec.model.model_copy(update={"sources": (source,)})})
+    repo.create_run(spec)
+    repo.reconcile_runs()
+    assert repo.paused_specs()[0].model.sources == (source,)
+    assert repo.get_run(spec.run_id)["sources"] != "[]"
+
+    # Reconstruct a v1 database containing the same pre-migration records.
+    old = database.connect(tmp_path / "old.sqlite")
+    first_script = database._migration_scripts()[0][1]
+    old.executescript(first_script)
+    old.execute("PRAGMA user_version=1")
+    for table in ("registrations", "downloads", "runs", "images"):
+        for row in repo._connection.execute(f"SELECT * FROM {table}"):
+            data = {key: row[key] for key in row.keys() if key != "sources"}
+            columns = ", ".join(data)
+            placeholders = ", ".join("?" for _ in data)
+            old.execute(
+                f"INSERT INTO {table} ({columns}) VALUES ({placeholders})", list(data.values())
+            )
+    old.commit()
+    assert database.migrate(old) == 2
+    legacy = Repository(old)
+    assert legacy.get_registration(registration.id).sources == ()
+    assert legacy.get_download(job.id).sources == ()
+    assert legacy.paused_specs()[0].model.sources == ()
+    assert legacy.get_run(spec.run_id)["prompt"] == spec.prompt
+    assert legacy.get_images(spec.run_id) == repo.get_images(spec.run_id)
+    assert database.migrate(old) == 2
+    old.close()
+
+
+def test_download_completion_rolls_back_registration_on_write_failure(repo):
+    import sqlite3
+
+    job = repo.create_download(
+        repo_id="Tongyi-MAI/Z-Image", revision="main", profile=s.ProfileId.Z_IMAGE
+    )
+    repo.claim_download(job.id)
+    repo.update_download_progress(job.id, resolved_commit="a" * 40)
+    before = repo.list_registrations()
+    repo._connection.execute(
+        "CREATE TRIGGER reject_completion BEFORE UPDATE OF status ON downloads"
+        " WHEN NEW.status = 'completed' BEGIN SELECT RAISE(ABORT, 'write failed'); END"
+    )
+    with pytest.raises(sqlite3.IntegrityError, match="write failed"):
+        repo.complete_download(job.id, "/cache/model")
+    assert repo.list_registrations() == before
+    assert repo.get_download(job.id).status is s.DownloadStatus.RUNNING
+    repo._connection.execute("DROP TRIGGER reject_completion")
+    repo.complete_download(job.id, "/cache/model")
+    assert len(repo.list_registrations()) == len(before) + 1
+    assert repo.get_download(job.id).status is s.DownloadStatus.COMPLETED

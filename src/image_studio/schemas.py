@@ -58,10 +58,12 @@ def plan_artifact_ids(count: int) -> tuple[str, ...]:
 
 
 class ProfileId(StrEnum):
-    """Selectable model profiles. One adapter, two distillation profiles."""
+    """Selectable model profiles. Built-in architecture and distillation profiles."""
 
     Z_IMAGE = "z-image"
     Z_IMAGE_TURBO = "z-image-turbo"
+    ANIMA_TURBO = "anima-turbo"
+    ANIMA_29B = "anima-2.9b"
 
 
 class WorkerState(StrEnum):
@@ -208,6 +210,32 @@ class ProfileSpec(BaseModel):
 
 PROFILES: Final[Mapping[ProfileId, ProfileSpec]] = types.MappingProxyType(
     {
+        ProfileId.ANIMA_TURBO: ProfileSpec(
+            profile_id=ProfileId.ANIMA_TURBO,
+            label="Anima-Turbo",
+            default_steps=10,
+            min_steps=1,
+            max_steps=100,
+            guidance_default=1.0,
+            guidance_fixed=1.0,
+            negative_prompt_supported=False,
+            default_width=1024,
+            default_height=1024,
+            dtype=DEFAULT_DTYPE,
+        ),
+        ProfileId.ANIMA_29B: ProfileSpec(
+            profile_id=ProfileId.ANIMA_29B,
+            label="Anima 2.9B",
+            default_steps=40,
+            min_steps=1,
+            max_steps=100,
+            guidance_default=4.0,
+            guidance_fixed=None,
+            negative_prompt_supported=True,
+            default_width=1024,
+            default_height=1024,
+            dtype=DEFAULT_DTYPE,
+        ),
         ProfileId.Z_IMAGE: ProfileSpec(
             profile_id=ProfileId.Z_IMAGE,
             label="Z-Image",
@@ -343,6 +371,17 @@ def resolve_seeds(
 # --------------------------------------------------------------------------
 
 
+class ModelSource(BaseModel):
+    """Backend-owned, immutable file selection at one fixed Hub revision."""
+
+    model_config = ConfigDict(frozen=True)
+
+    repo_id: str
+    commit_sha: str
+    files: tuple[str, ...]
+    snapshot_path: str
+
+
 class FrozenModel(BaseModel):
     """Resolved model identity for one run.
 
@@ -358,6 +397,7 @@ class FrozenModel(BaseModel):
     repo_id: str
     commit_sha: str
     profile: ProfileId
+    sources: tuple[ModelSource, ...] = ()
     dtype: str
     snapshot_path: str
 
@@ -664,6 +704,7 @@ class ModelRegistration(BaseModel):
     repo_id: str
     commit_sha: str
     profile: ProfileId
+    sources: tuple[ModelSource, ...] = ()
     display_name: str | None = None
     status: RegistrationStatus
     missing_files: list[str] = Field(default_factory=list)
@@ -705,6 +746,7 @@ class DownloadJob(BaseModel):
     requested_revision: str | None
     resolved_commit: str | None
     profile: ProfileId
+    sources: tuple[ModelSource, ...] = ()
     status: DownloadStatus
     error: ErrorInfo | None = None
     progress: DownloadProgress
@@ -771,6 +813,7 @@ class RunDetail(BaseModel):
     repo_id: str
     commit_sha: str
     profile: ProfileId
+    sources: tuple[ModelSource, ...] = ()
     dtype: str
     gpu: FrozenGpu | None = None
     prompt: str

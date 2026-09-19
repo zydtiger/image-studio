@@ -166,9 +166,13 @@ function residentRuntime(registrationId: string, gpuUuid = "gpu-0") {
   };
 }
 
-function renderPage(runtime = residentRuntime("reg-base")) {
-  profilesApi.getProfiles.mockResolvedValue(PROFILES);
-  modelsApi.listRegistrations.mockResolvedValue(REGISTRATIONS);
+function renderPage(
+  runtime = residentRuntime("reg-base"),
+  profiles = PROFILES,
+  registrations = REGISTRATIONS,
+) {
+  profilesApi.getProfiles.mockResolvedValue(profiles);
+  modelsApi.listRegistrations.mockResolvedValue(registrations);
   systemApi.getSystem.mockResolvedValue(SYSTEM);
   runtimeApi.getRuntime.mockResolvedValue(runtime);
   generationsApi.getQueue.mockResolvedValue({ paused: false, pending: [] });
@@ -1117,6 +1121,7 @@ describe("GeneratePage", () => {
     // Every page request stays at the page size and pages by offset, so
     // no amount of Load more can exceed the API's limit ceiling.
     for (let click = 0; click < 2; click += 1) {
+      const callsBefore = generationsApi.listRuns.mock.calls.length;
       fireEvent.click(
         within(results).getByRole("button", { name: /load more/i }),
       );
@@ -1125,8 +1130,12 @@ describe("GeneratePage", () => {
           8 * (click + 2),
         ),
       );
-      const lastCall = generationsApi.listRuns.mock.calls.at(-1)?.[0];
-      expect(lastCall).toMatchObject({
+      // Runtime polling may also refresh offset zero after this page arrives.
+      expect(
+        generationsApi.listRuns.mock.calls
+          .slice(callsBefore)
+          .map(([query]) => query),
+      ).toContainEqual({
         model: "Tongyi-MAI/Z-Image",
         has_images: true,
         limit: 8,
@@ -1332,5 +1341,54 @@ describe("GeneratePage", () => {
         ),
       { timeout: 5_000 },
     );
+  });
+});
+
+describe("Anima capabilities", () => {
+  it("switches between Turbo fixed CFG and 2.9B negative prompt controls", async () => {
+    const turbo: ProfileSpec = {
+      ...PROFILES[1],
+      profile_id: "anima-turbo",
+      label: "Anima-Turbo",
+      default_steps: 10,
+      guidance_default: 1,
+      guidance_fixed: 1,
+    };
+    const expanded: ProfileSpec = {
+      ...PROFILES[0],
+      profile_id: "anima-2.9b",
+      label: "Anima 2.9B",
+      default_steps: 40,
+    };
+    const registrations: ModelRegistration[] = [
+      {
+        ...REGISTRATIONS[0],
+        id: "reg-anima",
+        repo_id: "circlestone-labs/Anima",
+        profile: "anima-turbo",
+      },
+      {
+        ...REGISTRATIONS[0],
+        id: "reg-29",
+        repo_id: "Gazingstars123/Anima-2.9B",
+        profile: "anima-2.9b",
+      },
+    ];
+    renderPage(undefined, [turbo, expanded], registrations);
+    await waitFor(() =>
+      expect(screen.getByLabelText("Model")).toHaveValue("reg-anima"),
+    );
+    expect(screen.getByLabelText("Steps")).toHaveValue(10);
+    expect(screen.queryByLabelText("Guidance")).toBeNull();
+    expect(screen.queryByLabelText("Negative prompt")).toBeNull();
+    expect(
+      screen.getByText(/Guidance is fixed at 1 for Anima-Turbo/),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: { value: "reg-29" },
+    });
+    expect(screen.getByLabelText("Steps")).toHaveValue(40);
+    expect(screen.getByLabelText("Guidance")).toHaveValue(4);
+    expect(screen.getByLabelText("Negative prompt")).toBeInTheDocument();
   });
 });

@@ -21,7 +21,7 @@ import multiprocessing
 import os
 import sys
 
-from image_studio.inference import z_image
+from image_studio.inference import adapters, z_image
 from image_studio.inference.gpus import normalize_gpu_uuid
 from image_studio.inference.protocol import (
     CmdCancel,
@@ -147,7 +147,7 @@ def worker_main(launch: WorkerLaunch, cmd_conn, event_q) -> None:  # type: ignor
     pipeline = None
     try:
         try:
-            pipeline, pipeline_class = z_image.load_pipeline(launch.snapshot_path, launch.dtype)
+            pipeline, pipeline_class = adapters.load(launch)
         except (FileNotFoundError, NotADirectoryError) as exc:
             _fault(event_q, ErrorCode.CACHE_INCOMPLETE, "load", exc)
             return
@@ -166,12 +166,12 @@ def worker_main(launch: WorkerLaunch, cmd_conn, event_q) -> None:  # type: ignor
             )
         )
 
-        _serve_commands(pipeline, cmd_conn, event_q)
+        _serve_commands(pipeline, cmd_conn, event_q, adapters.for_profile(launch.profile))
     finally:
         _release(pipeline, event_q)
 
 
-def _serve_commands(pipeline: object, cmd_conn, event_q) -> None:  # type: ignore[no-untyped-def]
+def _serve_commands(pipeline: object, cmd_conn, event_q, adapter=z_image) -> None:  # type: ignore[no-untyped-def]
     shutdown_requested = False
     while not shutdown_requested:
         if not _parent_alive():
@@ -185,10 +185,10 @@ def _serve_commands(pipeline: object, cmd_conn, event_q) -> None:  # type: ignor
             # No active run; a stale cancel needs no action.
             continue
         if isinstance(msg, CmdRun):
-            shutdown_requested = _execute_run(pipeline, msg.task, cmd_conn, event_q)
+            shutdown_requested = _execute_run(pipeline, msg.task, cmd_conn, event_q, adapter)
 
 
-def _execute_run(pipeline: object, task: RunTask, cmd_conn, event_q) -> bool:  # type: ignore[no-untyped-def]
+def _execute_run(pipeline: object, task: RunTask, cmd_conn, event_q, adapter=z_image) -> bool:  # type: ignore[no-untyped-def]
     """Run one task to a terminal report; returns True when shutdown is due."""
 
     cancel_requested = False
@@ -198,9 +198,10 @@ def _execute_run(pipeline: object, task: RunTask, cmd_conn, event_q) -> bool:  #
             zip(task.seeds, task.artifact_ids, strict=True), start=1
         ):
             cancelled, shutdown_requested, png = _generate_one_image(
-                pipeline, task, index, seed, cmd_conn, event_q
+                pipeline, task, index, seed, cmd_conn, event_q, adapter
             )
             if cancelled or shutdown_requested:
+                cancel_requested = cancelled
                 break
             completed = index
 
@@ -249,6 +250,7 @@ def _generate_one_image(
     seed: int,
     cmd_conn,
     event_q,  # type: ignore[no-untyped-def]
+    adapter=z_image,
 ) -> tuple[bool, bool, bytes]:
     """Generate one image, reporting per-step progress.
 
@@ -277,7 +279,7 @@ def _generate_one_image(
             raise GenerationCancelled
 
     try:
-        png = z_image.generate_image(
+        png = adapter.generate_image(
             pipeline,
             prompt=task.prompt,
             negative_prompt=task.negative_prompt,

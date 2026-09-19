@@ -279,3 +279,51 @@ def wait_state(runtime, state, timeout=20.0):
 
 def wait_idle(runtime):
     wait_state(runtime, WorkerState.IDLE)
+
+
+def test_anima_switches_and_dependency_changes_replace_worker():
+    from image_studio.schemas import ModelSource
+
+    sink = RecordingSink()
+    runtime = make_runtime(sink)
+    plans = []
+    profiles = [
+        ProfileId.Z_IMAGE,
+        ProfileId.ANIMA_TURBO,
+        ProfileId.ANIMA_TURBO,
+        ProfileId.ANIMA_TURBO,
+        ProfileId.ANIMA_29B,
+    ]
+    for index, profile in enumerate(profiles):
+        sources = (
+            ()
+            if index == 0
+            else (
+                ModelSource(
+                    repo_id="shared/components",
+                    commit_sha="a" if index < 3 else "b",
+                    files=("weights.safetensors",),
+                    snapshot_path="/cache/shared",
+                ),
+            )
+        )
+        spec = make_spec(f"mixed-{index}")
+        plans.append(
+            spec.model_copy(
+                update={
+                    "model": spec.model.model_copy(update={"profile": profile, "sources": sources})
+                }
+            )
+        )
+    try:
+        for spec in plans:
+            runtime.submit(spec)
+        for spec in plans:
+            assert sink.wait_terminal(spec.run_id).event == "run_completed"
+        states = [event.state for event in sink.of("worker_state_changed")]
+        assert states.count(WorkerState.LOADING) == 4
+        assert states.count(WorkerState.SWITCHING) == 3
+        assert runtime.status().resident.profile == ProfileId.ANIMA_29B
+        assert runtime.status().state == WorkerState.IDLE
+    finally:
+        runtime.shutdown()

@@ -72,9 +72,15 @@ class RuntimeCoordinator:
             # status is display state only, so a repaired snapshot (same
             # fixed commit, no auto-update) becomes ready again and a broken
             # one keeps the same typed code across retries.
-            from image_studio.hub.cache import problem_codes, snapshot_problems
+            from image_studio.hub.anima import model_problems
+            from image_studio.hub.cache import problem_codes
 
-            found = snapshot_problems(Path(registration.snapshot_path))
+            found = model_problems(
+                Path(registration.snapshot_path),
+                registration.repo_id,
+                registration.profile,
+                registration.sources,
+            )
             if found:
                 problems = [problem.detail for problem in found]
                 self._repository.set_registration_status(
@@ -121,6 +127,7 @@ class RuntimeCoordinator:
                 profile=registration.profile,
                 dtype=profile.dtype,
                 snapshot_path=registration.snapshot_path or "",
+                sources=registration.sources,
             ),
             gpu=schemas.FrozenGpu(uuid=gpu.uuid, name=gpu.name),
             prompt=request.prompt,
@@ -440,6 +447,7 @@ class RuntimeCoordinator:
                 "profile": row["profile"],
                 "dtype": row["dtype"],
                 "snapshot_path": row["snapshot_path"],
+                "sources": json.loads(row["sources"]),
             },
             "gpu": {"uuid": row["gpu_uuid"], "name": row["gpu_name"]},
             "parameters": {

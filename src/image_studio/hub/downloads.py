@@ -20,6 +20,7 @@ import os
 import queue
 import sqlite3
 import threading
+from pathlib import Path
 
 from image_studio.hub.cache import problem_codes, snapshot_for_commit, snapshot_problems
 from image_studio.hub.client import HubStack, translate_hub_error
@@ -139,7 +140,10 @@ class DownloadEngine:
             return  # cancelled while queued
         job = self._persist(self._repository.get_download, job_id)
         try:
-            self._transfer(job_id, job.repo_id, job.requested_revision, job.resolved_commit)
+            if job.sources:
+                self._transfer_sources(job)
+            else:
+                self._transfer(job_id, job.repo_id, job.requested_revision, job.resolved_commit)
         except _ShuttingDown:
             raise
         except ImageStudioError as exc:
@@ -159,6 +163,47 @@ class DownloadEngine:
                 error_code=translated.code,
                 error_message=translated.message,
             )
+
+    def _transfer_sources(self, job) -> None:
+        from image_studio.hub.anima import model_problems
+
+        selected = []
+        for source in job.sources:
+            commit, listing = self._hub.file_lister(source.repo_id, source.commit_sha)
+            if commit != source.commit_sha:
+                raise ImageStudioError(ErrorCode.REVISION_NOT_FOUND, "download revision mismatch")
+            sizes = dict(listing)
+            for name in source.files:
+                if name not in sizes:
+                    raise ImageStudioError(
+                        ErrorCode.CACHE_INCOMPLETE, f"{source.repo_id}/{name} is missing"
+                    )
+                selected.append((source, name, sizes[name]))
+        self._persist(
+            self._repository.update_download_progress,
+            job.id,
+            bytes_done=0,
+            files_done=0,
+            files_total=len(selected),
+            bytes_total=sum(size or 0 for _, _, size in selected),
+        )
+        done = 0
+        for count, (source, name, size) in enumerate(selected, 1):
+            if self._stopping.is_set():
+                raise _ShuttingDown
+            path = self._hub.downloader(source.repo_id, name, source.commit_sha)
+            done += size if size is not None else _file_size(path)
+            self._persist(
+                self._repository.update_download_progress, job.id, bytes_done=done, files_done=count
+            )
+        problems = model_problems(
+            Path(job.sources[0].snapshot_path), job.repo_id, job.profile, job.sources
+        )
+        if problems:
+            raise ImageStudioError(
+                problem_codes(problems), "; ".join(problem.detail for problem in problems)
+            )
+        self._persist(self._repository.complete_download, job.id, job.sources[0].snapshot_path)
 
     def _transfer(
         self,
@@ -215,7 +260,7 @@ class DownloadEngine:
                 + "; ".join(problem.detail for problem in problems),
             )
             return
-        self._persist(self._repository.finish_download, job_id, DownloadStatus.COMPLETED)
+        self._persist(self._repository.complete_download, job_id, str(snapshot.path))
 
 
 def _file_size(path: str | None) -> int:

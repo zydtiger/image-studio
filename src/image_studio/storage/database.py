@@ -8,7 +8,7 @@ from pathlib import Path
 
 from image_studio.storage import migrations as migrations_package
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 
 def connect(database_file: Path) -> sqlite3.Connection:

@@ -12,6 +12,7 @@ from image_studio.schemas import (
     DEFAULT_DTYPE,
     PROFILES,
     FrozenRunSpec,
+    ModelSource,
     ProfileId,
     ProfileSpec,
 )
@@ -20,6 +21,8 @@ from image_studio.schemas import (
 #: convenience; the runtime itself only ever uses the backend-verified
 #: ``snapshot_path`` from a ``FrozenRunSpec``).
 DEFAULT_REPOSITORIES: dict[ProfileId, str] = {
+    ProfileId.ANIMA_TURBO: "circlestone-labs/Anima",
+    ProfileId.ANIMA_29B: "Gazingstars123/Anima-2.9B",
     ProfileId.Z_IMAGE: "Tongyi-MAI/Z-Image",
     ProfileId.Z_IMAGE_TURBO: "Tongyi-MAI/Z-Image-Turbo",
 }
@@ -29,7 +32,7 @@ SUPPORTED_DTYPES: frozenset[str] = frozenset({"bfloat16", "float16"})
 
 #: Worker reuse key: identical repo id, commit, profile, dtype, and GPU.
 #: Any difference is a full worker replacement (contract section 3).
-WorkerIdentity = tuple[str, str, ProfileId, str, str]
+WorkerIdentity = tuple[str, str, ProfileId, str, str, tuple[ModelSource, ...]]
 
 
 def get_profile(profile_id: ProfileId) -> ProfileSpec:
@@ -48,6 +51,7 @@ def worker_identity(spec: FrozenRunSpec) -> WorkerIdentity:
         spec.model.profile,
         spec.model.dtype,
         spec.gpu.uuid,
+        spec.model.sources,
     )
 
 

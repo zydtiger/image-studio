@@ -121,7 +121,7 @@ def scan(cache_dir: Path) -> list[CachedRepo]:
                 commit_sha=revision.commit_hash,
                 path=str(revision.snapshot_path),
                 size_bytes=revision.size_on_disk,
-                incomplete=_snapshot_incomplete(Path(revision.snapshot_path)),
+                incomplete=_snapshot_incomplete(Path(revision.snapshot_path), repo.repo_id),
             )
             for revision in revisions
         ]
@@ -136,7 +136,7 @@ def scan(cache_dir: Path) -> list[CachedRepo]:
     return sorted(repos, key=lambda repo: repo.repo_id)
 
 
-def _snapshot_incomplete(root: Path) -> bool:
+def _snapshot_incomplete(root: Path, repo_id: str | None = None) -> bool:
     """Truthful incompleteness for known required manifests only.
 
     A readable Z-Image ``model_index.json`` enables exact manifest checks.
@@ -145,6 +145,12 @@ def _snapshot_incomplete(root: Path) -> bool:
     snapshots of other architectures are listed without claiming validated
     completeness in either direction.
     """
+    from image_studio.hub.anima import RECIPES, make_sources, model_problems
+
+    for profile, recipe in RECIPES.items():
+        if repo_id == recipe.repo_id:
+            sources = make_sources(root.parent.parent.parent, repo_id, root.name, profile)
+            return bool(model_problems(root, repo_id, profile, sources))
     if (root / "model_index.json").is_file():
         if not _is_zimage_snapshot(root):
             return False

@@ -1,7 +1,7 @@
 # Image Studio
 
 A local WebUI for Hugging Face model discovery and text-to-image generation
-with Diffusers. The supported profiles are Z-Image and Z-Image-Turbo.
+with Diffusers. The supported profiles are Z-Image, Z-Image-Turbo, Anima-Turbo, and Anima 2.9B.
 
 **Status: implemented and integrated (CPU-validated).** The backend server
 (`image-studio serve`), SQLite storage with migrations, Hub discovery, cache
@@ -98,3 +98,30 @@ See [architecture and file trees](docs/architecture.md) for the accepted design,
 boundaries and HTTP shapes, and [development](docs/development.md) for
 validation and implementation order. This is a local-only Git repository with
 no remote or release workflow.
+
+## Anima models
+
+Search these original repositories in Models → Discover, select the matching
+profile, and download. Once all files pass validation, the model is automatically
+added to My Models with the selected profile:
+
+| Profile | Repository and checkpoint | Default settings |
+| --- | --- | --- |
+| Anima-Turbo | `circlestone-labs/Anima`, `split_files/diffusion_models/anima-turbo-v1.1.safetensors` | 10 steps, fixed CFG 1, no negative prompt |
+| Anima 2.9B | `Gazingstars123/Anima-2.9B`, `Anima-2.9B-preview-v1.safetensors` | 40 steps, CFG 4, negative prompt supported |
+
+Both default to bfloat16 and 1024 × 1024. Downloads also fetch the required
+shared components from CircleStone's official `Anima-Base-v1.0-Diffusers`
+export at commit `073c3a9db359c31ad0e8aa268d15775473c2176c`. The component
+sources and fixed revisions remain attached to registrations and history.
+The shared export's Base denoiser and text conditioner weights are not downloaded.
+
+Inference uses native Diffusers Anima blocks and Euler flow matching with
+shift 3. Checkpoint conversion happens in memory; there is no converted weight
+copy, ComfyUI dependency, or remote Python execution. Only the two named
+checkpoint recipes are supported, not arbitrary single-file or SD.Next exports.
+The models retain the CircleStone Labs Non-Commercial License.
+
+Anima validation covers fake end-to-end flows and, when the inference extra
+is installed, tiny synthetic CPU tensor conversion with the real Diffusers
+classes. Real-GPU output quality and performance have not been verified.

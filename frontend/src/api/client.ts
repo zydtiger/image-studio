@@ -164,7 +164,16 @@ function parseErrorEnvelope(body: unknown): EnvelopeParts {
 /** Maps any thrown value to a short human-readable message for display. */
 export function errorMessage(error: unknown): string {
   if (isApiError(error)) {
-    return error.message;
+    const problems = error.details?.problems;
+    const details = Array.isArray(problems)
+      ? problems.filter(
+          (problem): problem is string =>
+            typeof problem === "string" && problem.trim() !== "",
+        )
+      : [];
+    return details.length > 0
+      ? `${error.message}: ${details.join("; ")}`
+      : error.message;
   }
   if (error instanceof DOMException && error.name === "AbortError") {
     return "Request cancelled.";

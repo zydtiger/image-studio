@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from image_studio.schemas import ErrorInfo, ProfileId
+from image_studio.schemas import ErrorInfo, ModelSource, ProfileId
 
 # ---------------------------------------------------------------------------
 # Launch payload (supervisor -> child process, at spawn time)
@@ -77,10 +77,18 @@ class WorkerLaunch:
     gpu_uuid: str
     gpu_name: str
     fake_script: FakeScript | None = None
+    sources: tuple[ModelSource, ...] = ()
 
     @property
-    def identity(self) -> tuple[str, str, ProfileId, str, str]:
-        return (self.repo_id, self.commit_sha, self.profile, self.dtype, self.gpu_uuid)
+    def identity(self) -> tuple[str, str, ProfileId, str, str, tuple[ModelSource, ...]]:
+        return (
+            self.repo_id,
+            self.commit_sha,
+            self.profile,
+            self.dtype,
+            self.gpu_uuid,
+            self.sources,
+        )
 
 
 @dataclass(frozen=True)

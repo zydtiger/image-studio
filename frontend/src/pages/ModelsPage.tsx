@@ -3,7 +3,7 @@ import { useState } from "react";
 import { listRegistrations } from "../api/models";
 import type { ModelRegistration } from "../api/types";
 import { Tabs } from "../components/ui/Tabs";
-import { useApiQuery } from "../hooks/useApiQuery";
+import { usePolling } from "../hooks/usePolling";
 import { DiscoverPanel } from "../components/models/DiscoverPanel";
 import { DownloadsPanel } from "../components/models/DownloadsPanel";
 import { LocalCachePanel } from "../components/models/LocalCachePanel";
@@ -17,8 +17,30 @@ type ModelsTab = "discover" | "library" | "cache" | "downloads";
  */
 export default function ModelsPage() {
   const [tab, setTab] = useState<ModelsTab>("discover");
-  const modelsQuery = useApiQuery(listRegistrations, []);
-  const registrations: ModelRegistration[] = modelsQuery.data ?? [];
+  const [registrations, setRegistrations] = useState<ModelRegistration[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<unknown>();
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refreshModels = () => setRefreshKey((value) => value + 1);
+  usePolling(
+    async (signal) => {
+      const models = await listRegistrations(signal);
+      if (signal.aborted) return;
+      setRegistrations(models);
+      setError(undefined);
+      setLoading(false);
+    },
+    {
+      enabled: tab === "library",
+      activeIntervalMs: 1_000,
+      backgroundIntervalMs: 5_000,
+      refreshKey,
+      onError: (cause) => {
+        setError(cause);
+        setLoading(false);
+      },
+    },
+  );
 
   return (
     <section className="page page--models">
@@ -40,10 +62,10 @@ export default function ModelsPage() {
             content: (
               <MyModelsPanel
                 registrations={registrations}
-                loading={modelsQuery.loading}
-                error={modelsQuery.error}
-                onRetry={() => modelsQuery.refetch()}
-                onChanged={() => modelsQuery.refetch()}
+                loading={loading}
+                error={error}
+                onRetry={refreshModels}
+                onChanged={refreshModels}
                 onGoDiscover={() => setTab("discover")}
               />
             ),
@@ -51,9 +73,7 @@ export default function ModelsPage() {
           {
             id: "cache",
             label: "Local Cache",
-            content: (
-              <LocalCachePanel onRegistered={() => modelsQuery.refetch()} />
-            ),
+            content: <LocalCachePanel onRegistered={refreshModels} />,
           },
           {
             id: "discover",
@@ -61,7 +81,7 @@ export default function ModelsPage() {
             content: (
               <DiscoverPanel
                 onDownloaded={() => setTab("downloads")}
-                onRegistered={() => modelsQuery.refetch()}
+                onRegistered={refreshModels}
               />
             ),
           },

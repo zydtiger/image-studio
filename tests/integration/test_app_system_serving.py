@@ -32,7 +32,7 @@ def test_system_info_reports_paths_gpus_and_development_flags(harness) -> None:
 def test_profiles_capability_metadata(harness) -> None:
     profiles = harness.client.get("/api/profiles").json()["profiles"]
     by_id = {profile["profile_id"]: profile for profile in profiles}
-    assert set(by_id) == {"z-image", "z-image-turbo"}
+    assert set(by_id) == {"z-image", "z-image-turbo", "anima-turbo", "anima-2.9b"}
     assert by_id["z-image-turbo"]["guidance_fixed"] == 0.0
     assert by_id["z-image-turbo"]["negative_prompt_supported"] is False
     assert by_id["z-image"]["default_steps"] == 50

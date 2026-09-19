@@ -7,6 +7,7 @@ from fastapi import APIRouter, Request, Response
 from image_studio import schemas
 from image_studio.api import state
 from image_studio.hub import cache as hub_cache
+from image_studio.hub.anima import make_sources, model_problems
 from image_studio.hub.client import DEFAULT_SEARCH_LIMIT
 from image_studio.hub.compatibility import check_compatibility
 from image_studio.schemas import ErrorCode, ImageStudioError
@@ -50,11 +51,12 @@ def register_model(request: Request, body: schemas.RegistrationCreate) -> schema
             f"no cached snapshot for {body.repo_id}; download it first",
             {"repo_id": body.repo_id},
         )
-    problems = hub_cache.snapshot_problems(hit.path)
+    sources = make_sources(app_state.hub.cache_dir, body.repo_id, hit.commit_sha, body.profile)
+    problems = model_problems(hit.path, body.repo_id, body.profile, sources)
     if problems:
         raise ImageStudioError(
             hub_cache.problem_codes(problems),
-            "cached snapshot does not satisfy the Z-Image component manifest",
+            "cached model does not satisfy its component manifest",
             {**hub_cache.problem_details(problems), "snapshot_path": str(hit.path)},
         )
     try:
@@ -64,6 +66,7 @@ def register_model(request: Request, body: schemas.RegistrationCreate) -> schema
             profile=body.profile,
             snapshot_path=str(hit.path),
             display_name=body.display_name,
+            sources=sources,
         )
     except ValueError as exc:
         raise ImageStudioError(ErrorCode.CONFLICT, str(exc)) from exc
@@ -71,7 +74,25 @@ def register_model(request: Request, body: schemas.RegistrationCreate) -> schema
 
 @router.get("/api/models")
 def list_models(request: Request) -> dict[str, list[schemas.ModelRegistration]]:
-    return {"registrations": state(request).repository.list_registrations()}
+    from pathlib import Path
+
+    repository = state(request).repository
+    for registration in repository.list_registrations():
+        if registration.sources:
+            problems = model_problems(
+                Path(registration.snapshot_path),
+                registration.repo_id,
+                registration.profile,
+                registration.sources,
+            )
+            repository.set_registration_status(
+                registration.id,
+                schemas.RegistrationStatus.MISSING_FILES
+                if problems
+                else schemas.RegistrationStatus.READY,
+                [problem.detail for problem in problems],
+            )
+    return {"registrations": repository.list_registrations()}
 
 
 @router.patch("/api/models/{registration_id}")
@@ -81,6 +102,22 @@ def update_model(
     app_state = state(request)
     if body.profile is not None:
         _guard_registration_unused(app_state, registration_id)
+        from pathlib import Path
+
+        registration = app_state.repository.get_registration(registration_id)
+        if body.profile != registration.profile:
+            problems = model_problems(
+                Path(registration.snapshot_path or ""),
+                registration.repo_id,
+                body.profile,
+                registration.sources,
+            )
+            if problems:
+                raise ImageStudioError(
+                    hub_cache.problem_codes(problems),
+                    "profile does not match the cached model",
+                    hub_cache.problem_details(problems),
+                )
     try:
         return app_state.repository.update_registration(
             registration_id, display_name=body.display_name, profile=body.profile

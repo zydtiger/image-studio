@@ -99,11 +99,12 @@ def test_download_lifecycle_and_retry(harness) -> None:
     assert harness.client.post(f"/api/downloads/{job_id}/retry").status_code == 409
     assert harness.client.post(f"/api/downloads/{job_id}/cancel").status_code == 409
 
-    # a completed download makes registration possible
-    registered = harness.client.post(
-        "/api/models", json={"repo_id": "Tongyi-MAI/Z-Image", "profile": "z-image"}
-    )
-    assert registered.status_code == 201
+    registrations = harness.client.get("/api/models").json()["registrations"]
+    assert len(registrations) == 1
+    assert registrations[0]["repo_id"] == "Tongyi-MAI/Z-Image"
+    assert registrations[0]["commit_sha"] == job["resolved_commit"]
+    assert registrations[0]["profile"] == job["profile"]
+    assert registrations[0]["status"] == "ready"
 
 
 def test_hub_search_detail_compatibility_cache(harness) -> None:

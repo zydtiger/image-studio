@@ -352,7 +352,29 @@ def default_fake_repos() -> list[FakeRepoSpec]:
             license="apache-2.0",
             author="Tongyi-MAI",
         ),
+    ] + anima_fake_repos()
+
+
+def anima_fake_repos() -> list[FakeRepoSpec]:
+    """Original-repo metadata with tiny placeholders, never usable weights."""
+    from image_studio.hub.anima import RECIPES, SHARED_COMMIT, SHARED_FILES, SHARED_REPO
+
+    repos = [
+        FakeRepoSpec(
+            repo_id=recipe.repo_id,
+            files={recipe.checkpoint: b"fake-anima"},
+            sha=str(i) * 40,
+            license="other",
+        )
+        for i, recipe in enumerate(RECIPES.values(), 1)
     ]
+    shared_files = {
+        name: "{}" if name.endswith(".json") else b"fake-component" for name in SHARED_FILES
+    }
+    repos.append(
+        FakeRepoSpec(repo_id=SHARED_REPO, files=shared_files, sha=SHARED_COMMIT, license="other")
+    )
+    return repos
 
 
 def _z_image_files() -> dict[str, str | bytes]:

@@ -27,7 +27,13 @@ function RegisterSnapshotDialog({
   onRegistered: () => void;
 }) {
   const toast = useToast();
-  const [profile, setProfile] = useState<ProfileId>("z-image");
+  const [profile, setProfile] = useState<ProfileId>(
+    repo.repo_id === "circlestone-labs/Anima"
+      ? "anima-turbo"
+      : repo.repo_id === "Gazingstars123/Anima-2.9B"
+        ? "anima-2.9b"
+        : "z-image",
+  );
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -83,6 +89,8 @@ function RegisterSnapshotDialog({
       >
         <option value="z-image">z-image</option>
         <option value="z-image-turbo">z-image-turbo</option>
+        <option value="anima-turbo">anima-turbo</option>
+        <option value="anima-2.9b">anima-2.9b</option>
       </SelectField>
       <TextField
         id="register-display-name"

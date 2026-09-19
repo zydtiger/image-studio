@@ -23,9 +23,12 @@ visibly identified as development-only.
 
 ## Product boundaries
 
-- Start with text-to-image using Z-Image and Z-Image-Turbo through one
-  `ZImagePipeline` adapter with separate profiles. Other architectures and
-  image-to-image are future work.
+- Support text-to-image with Z-Image/Z-Image-Turbo through `ZImagePipeline`
+  and original Anima-Turbo v1.1/Anima 2.9B Preview v1 through
+  `AnimaModularPipeline`. The Anima recipes pin every checkpoint and shared
+  component revision; convert original denoiser weights only in memory.
+  Generic single-file imports, LoRA, quantization and image-to-image remain
+  outside the supported scope.
 - Every generation request selects its GPU. Across the application, keep at
   most one model worker and one resident model. Reuse an identical model on
   the same GPU; otherwise finish the current task and fully unload the old

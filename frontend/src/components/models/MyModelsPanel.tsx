@@ -210,7 +210,11 @@ export function MyModelsPanel({
       {editing !== null ? (
         <EditDialog
           registration={editing}
-          profiles={["z-image", "z-image-turbo"]}
+          profiles={
+            editing.profile.startsWith("anima-")
+              ? [editing.profile]
+              : ["z-image", "z-image-turbo"]
+          }
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);

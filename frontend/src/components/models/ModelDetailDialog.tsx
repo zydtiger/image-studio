@@ -4,7 +4,6 @@ import { createDownload } from "../../api/downloads";
 import { createRegistration } from "../../api/models";
 import { getCompatibility, getHubModelDetail } from "../../api/hub";
 import type { ProfileId } from "../../api/types";
-import { isApiError } from "../../api/client";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
@@ -86,7 +85,7 @@ export function ModelDetailDialog({
         });
         toast.pushToast({
           kind: "success",
-          message: `Download queued for ${repoId}.`,
+          message: `Download queued for ${repoId}. It will be added to My Models when complete.`,
         });
         onDownloaded();
       } else {
@@ -115,7 +114,7 @@ export function ModelDetailDialog({
         onRegistered();
       }
     } catch (error) {
-      setActionError(isApiError(error) ? error.message : errorMessage(error));
+      setActionError(errorMessage(error));
     } finally {
       setBusy(false);
     }

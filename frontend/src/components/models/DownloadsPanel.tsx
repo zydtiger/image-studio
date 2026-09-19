@@ -68,9 +68,7 @@ function DownloadRow({
         </p>
       ) : null}
       {job.status === "completed" ? (
-        <p className="field-hint">
-          Completed. Register the snapshot from Local Cache to use it.
-        </p>
+        <p className="field-hint">Download complete.</p>
       ) : null}
       <div className="download-row__actions">
         {job.status === "failed" || job.status === "cancelled" ? (

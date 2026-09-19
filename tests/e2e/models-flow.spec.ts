@@ -34,7 +34,7 @@ test("discovers a model, checks compatibility, and downloads it", async ({
     timeout: 15_000,
   });
   await expect(
-    page.getByText(/Register the snapshot from Local Cache/i),
+    page.getByText("Download complete.", { exact: true }),
   ).toBeVisible();
 });
 

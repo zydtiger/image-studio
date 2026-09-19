@@ -39,6 +39,7 @@ vi.mock("../api/downloads", () => downloadsApi);
 vi.mock("../api/runtime", () => runtimeApi);
 
 import ModelsPage from "./ModelsPage";
+import { ApiError } from "../api/client";
 import { ToastProvider } from "../state/toast/ToastProvider";
 import { RuntimeProvider } from "../state/runtime/RuntimeProvider";
 
@@ -95,6 +96,7 @@ function renderModels() {
 
 beforeEach(() => {
   modelsApi.listRegistrations.mockReset();
+  modelsApi.createRegistration.mockReset();
   modelsApi.deleteRegistration.mockReset();
   hubApi.searchHubModels.mockReset();
   hubApi.getHubModelDetail.mockReset();
@@ -116,6 +118,18 @@ describe("ModelsPage", () => {
         await screen.findByRole("tab", { name: tab, selected: true }),
       ).toBeInTheDocument();
     }
+  });
+
+  it("shows a completed download's registration while My Models stays open", async () => {
+    renderModels();
+    modelsApi.listRegistrations.mockResolvedValue([]);
+    fireEvent.click(screen.getByRole("tab", { name: "My Models" }));
+    await waitFor(() => expect(modelsApi.listRegistrations).toHaveBeenCalled());
+    modelsApi.listRegistrations.mockResolvedValue([REGISTRATIONS[0]]);
+    expect(
+      await screen.findByText("Tongyi-MAI/Z-Image", {}, { timeout: 3_000 }),
+    ).toBeInTheDocument();
+    expect(modelsApi.createRegistration).not.toHaveBeenCalled();
   });
 
   it("marks registrations with missing files", async () => {
@@ -292,6 +306,28 @@ describe("ModelsPage", () => {
       },
     ];
   }
+
+  it("shows the component validation reason when cache registration fails", async () => {
+    renderModels();
+    cacheApi.listCachedRepos.mockResolvedValue(cachedFixture());
+    modelsApi.createRegistration.mockRejectedValue(
+      new ApiError("cached model does not satisfy its component manifest", {
+        kind: "http",
+        status: 422,
+        details: { problems: ["Anima component recipe mismatch"] },
+      }),
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Local Cache" }));
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Register" }))[0],
+    );
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Register" }))[1],
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Anima component recipe mismatch",
+    );
+  });
 
   it("lists cached snapshots and registers them", async () => {
     modelsApi.createRegistration.mockResolvedValue(REGISTRATIONS[0]);

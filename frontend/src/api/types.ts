@@ -6,7 +6,15 @@
 
 export const MAX_SEED = 4294967295;
 
-export type ProfileId = "z-image" | "z-image-turbo";
+export type ProfileId =
+  "z-image" | "z-image-turbo" | "anima-turbo" | "anima-2.9b";
+
+export interface ModelSource {
+  repo_id: string;
+  commit_sha: string;
+  files: string[];
+  snapshot_path: string;
+}
 
 export type WorkerState =
   "unloaded" | "loading" | "idle" | "generating" | "switching" | "ejecting";
@@ -173,6 +181,7 @@ export interface ModelRegistration {
   snapshot_path?: string | null;
   created_at: string;
   last_used_at?: string | null;
+  sources?: ModelSource[];
 }
 
 export interface RegistrationCreate {
@@ -212,6 +221,7 @@ export interface DownloadJob {
   created_at: string;
   started_at?: string | null;
   finished_at?: string | null;
+  sources?: ModelSource[];
 }
 
 export interface ArtifactView {
@@ -277,6 +287,7 @@ export interface RunDetail {
   progress?: RunProgressSnapshot | null;
   error?: ErrorInfo | null;
   images: ArtifactView[];
+  sources?: ModelSource[];
 }
 
 export interface FavoriteUpdate {

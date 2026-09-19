@@ -299,3 +299,49 @@ describe("buildRequest", () => {
     expect(request.steps).toBe(60);
   });
 });
+
+it.each(["anima-turbo", "anima-2.9b"] as const)(
+  "reuses %s history with the registered profile",
+  (profile) => {
+    const turbo = profile === "anima-turbo";
+    const spec: ProfileSpec = {
+      ...(turbo ? Z_IMAGE_TURBO : Z_IMAGE),
+      profile_id: profile,
+      label: profile,
+      default_steps: turbo ? 10 : 40,
+      guidance_default: turbo ? 1 : 4,
+      guidance_fixed: turbo ? 1 : null,
+    };
+    const registration: ModelRegistration = { ...REGISTRATION_BASE, profile };
+    const reuse: ReusePayload = {
+      registrationId: registration.id,
+      repoId: registration.repo_id,
+      profile,
+      prompt: "mountain landscape 山",
+      negativePrompt: turbo ? null : "blurry",
+      width: 1024,
+      height: 1024,
+      steps: turbo ? 12 : 50,
+      guidance: turbo ? 1 : 5,
+      seed: 123,
+      count: 1,
+      gpuUuid: "gpu-0",
+      gpuName: "RTX A",
+    };
+    const { state, notices } = applyReuse(
+      EMPTY_FORM,
+      reuse,
+      [registration],
+      [spec],
+      GPUS,
+    );
+    expect(notices).toEqual([]);
+    const { values, errors } = validateForm(state, spec);
+    expect(errors).toEqual({});
+    const request = buildRequest(values, spec);
+    expect(request.steps).toBe(reuse.steps);
+    expect(request.prompt).toBe(reuse.prompt);
+    expect(request.seed).toBe(123);
+    expect(request.guidance).toBe(turbo ? null : 5);
+  },
+);

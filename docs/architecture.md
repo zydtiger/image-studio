@@ -35,18 +35,21 @@ Use four English-language pages:
   token values, GPU information, and resident-model status. Configuration
   changes require restart; no live data migration in v1.
 
-V1 is text-to-image only. Exclude FLUX, standalone checkpoints, LoRA, masks,
+V1 is text-to-image only. Exclude FLUX, arbitrary standalone checkpoints, LoRA, masks,
 video, CPU offload, ComfyUI integration, account management, automatic updates,
 and shared cache deletion. Add image-to-image later as a distinct capability.
 
 ## Models and residency
 
-Use one built-in `ZImagePipeline` adapter with two profiles:
+Use explicit built-in adapters: `ZImagePipeline` for Z-Image and
+`AnimaModularPipeline` for the two original-checkpoint Anima recipes:
 
 | Profile | Default repo | Steps | Guidance | Negative prompt |
 | --- | --- | --- | --- | --- |
 | Z-Image | `Tongyi-MAI/Z-Image` | 50 | 4.0 | Supported |
 | Z-Image-Turbo | `Tongyi-MAI/Z-Image-Turbo` | 9 | Fixed at 0.0 | Hidden |
+| Anima-Turbo | `circlestone-labs/Anima` (Turbo v1.1) | 10 | Fixed at 1.0 | Hidden |
+| Anima 2.9B | `Gazingstars123/Anima-2.9B` (Preview v1) | 40 | 4.0 | Supported |
 
 Default to bfloat16 and 1024 x 1024. Accept dimensions from 256 to 2048 in
 multiples of 16 and 1-4 sequential images per request. Resolve an empty seed
@@ -62,7 +65,7 @@ Run one API process, one global FIFO generation queue, and at most one resident
 inference worker. Every request specifies a GPU UUID. The API process never owns
 CUDA model tensors. Downloads use a separate single-task queue.
 
-- Same model, fixed revision, profile, dtype, and GPU: reuse the worker.
+- Same model, fixed revision, component sources, profile, dtype, and GPU: reuse the worker.
 - Different model or GPU: finish current work, stop the previous worker,
   confirm its exit, then start and load the replacement. Never overlap workers.
 - After generation: keep the model resident indefinitely; no idle unload.
@@ -97,6 +100,22 @@ files, safetensors, and shard indexes required by the selected profile; omit
 duplicate weight formats and unrelated training artifacts. Validate required
 files after download. Cache presence alone does not mean a model is runnable.
 Generation uses the verified snapshot with `local_files_only=True`.
+
+Anima recipes select the exact original checkpoint and pinned shared components
+from the official CircleStone Diffusers export. A download freezes both repos
+before enqueueing and reports combined progress. Registration and each new
+submission validate both cached snapshots. Missing shared files make the
+registration unavailable; repair reuses the same fixed revisions. Source
+manifests persist through restarts and accompany generation metadata. Inference
+loads the checkpoint's own conditioner, overrides transformer depth to 28 or 40,
+and converts tensor keys in memory using Diffusers' Cosmos mapping. It explicitly
+loads local component paths instead of following remote modular component URLs.
+
+Downloads started through Image Studio automatically register the verified snapshot
+with their selected profile and fixed commit. Registration and download completion
+are committed atomically; repeated downloads reuse the existing library entry
+and preserve its display name. External cache entries still require manual
+registration, and previously completed jobs are not backfilled.
 
 Show measured download progress, errors, and retry. Permit cancellation of queued
 downloads; active pause is out of scope. A retry reuses available cache files.
@@ -157,8 +176,8 @@ image-studio/
 
 Use one Python package, not a uv workspace. The frontend owns rendering and
 typed API access; the backend owns compatibility, validation, GPU lifecycle,
-downloads, and persistence. Introduce a small explicit adapter registry only
-when a second architecture requires one; do not build a plugin framework now.
+downloads, and persistence. Use a small explicit adapter registry for the supported architectures;
+there is no dynamic plugin framework.
 
 ## Application data tree
 

@@ -67,6 +67,37 @@ def check_compatibility(
         "Base or Turbo explicitly.",
     ]
 
+    from image_studio.hub.anima import RECIPES, SHARED_COMMIT, SHARED_FILES, SHARED_REPO
+
+    for profile, recipe in RECIPES.items():
+        if repo_id != recipe.repo_id:
+            continue
+        missing = []
+        if recipe.checkpoint not in files:
+            missing.append(f"{recipe.checkpoint} is missing")
+        try:
+            shared = api.model_info(SHARED_REPO, revision=SHARED_COMMIT, files_metadata=True)
+        except Exception as exc:
+            raise translate_hub_error(exc) from exc
+        if shared.sha != SHARED_COMMIT:
+            missing.append("shared component revision mismatch")
+        shared_files = {item.rfilename for item in shared.siblings}
+        missing.extend(
+            f"{SHARED_REPO}/{name} is missing" for name in SHARED_FILES if name not in shared_files
+        )
+        return schemas.CompatibilityReport(
+            repo_id=repo_id,
+            revision=revision or "main",
+            commit_sha=commit_sha,
+            structurally_compatible=not missing,
+            selectable_profiles=[profile] if not missing else [],
+            findings=missing,
+            notes=[
+                "Original Anima checkpoint with pinned official shared components.",
+                "Structural compatibility does not guarantee output quality.",
+            ],
+        )
+
     has_model_index = "model_index.json" in files
     has_safetensors = any(name.endswith(".safetensors") for name in files)
     remote_code_files = [name for name in files if name.endswith(".py")]

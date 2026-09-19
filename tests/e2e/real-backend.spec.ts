@@ -16,12 +16,12 @@ import { expect, test } from "@playwright/test";
  *       --host 127.0.0.1 --port 7860 &
  *   E2E_BASE_URL=http://127.0.0.1:7860 npm --prefix tests/e2e test real-backend
  *
- * HUB_QUERY matches the fake Hub catalog's repo ids ("z" finds both
- * Z-Image repositories). Stop the server afterwards; it owns the port
+ * HUB_QUERY matches the fake Hub catalog's Z-Image repo ids.
+ * Stop the server afterwards; it owns the port
  * and the temporary state.
  */
 
-const HUB_QUERY = "z";
+const HUB_QUERY = "Tongyi-MAI/Z-Image";
 
 test.beforeEach(() => {
   test.skip(
@@ -57,13 +57,16 @@ test("full flow: download+register, generate twice on one page, history, downloa
   test.setTimeout(240_000);
 
   // --- Deterministic model onboarding for a fresh, empty fake cache:
-  // download through the real dialog, then register from the cache. ---
+  // download through the real dialog, then verify automatic registration. ---
   await page.goto("/#/models");
   await page.getByRole("tab", { name: "Discover" }).click();
   await page.getByLabel("Search Hugging Face").fill(HUB_QUERY);
   await page.getByRole("button", { name: "Search" }).click();
 
-  const detailButton = page.getByRole("button", { name: "Details" }).first();
+  const detailButton = page
+    .locator(".model-card")
+    .filter({ has: page.getByText(HUB_QUERY, { exact: true }) })
+    .getByRole("button", { name: "Details" });
   await expect(detailButton).toBeVisible({ timeout: 15_000 });
   await detailButton.click();
 
@@ -79,15 +82,8 @@ test("full flow: download+register, generate twice on one page, history, downloa
     timeout: 180_000,
   });
 
-  await page.getByRole("tab", { name: "Local Cache" }).click();
-  await page.getByRole("button", { name: "Register" }).first().click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Register" })
-    .click();
-  await expect(page.getByText(/registered/i).first()).toBeVisible({
-    timeout: 15_000,
-  });
+  await page.getByRole("tab", { name: "My Models" }).click();
+  await expect(page.getByText(HUB_QUERY, { exact: true })).toBeVisible();
 
   // --- Generate page loaded ONCE; both runs submit on the same page. ---
   await page.goto("/#/generate");

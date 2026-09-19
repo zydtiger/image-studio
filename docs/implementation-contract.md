@@ -120,7 +120,8 @@ Worker invariants (normative):
 - Globally at most one worker process and one resident model, ever. The
   invariant includes GPU changes: the same model on a different GPU is a
   full worker replacement, not a mutation.
-- Worker reuse requires identical repo id, commit, profile, dtype, and GPU.
+- Worker reuse requires identical repo id, commit, component source manifests,
+  profile, dtype, and GPU.
   Otherwise: finish the current task, fully stop the previous worker,
   confirm its exit, then start and load the replacement. Workers never
   overlap in time or memory.
@@ -239,7 +240,7 @@ unknown paths fall back to the SPA.
 | GET | `/api/models` | - | `{registrations: [...]}` | |
 | PATCH | `/api/models/{id}` | `RegistrationUpdate` | 200 `ModelRegistration` | Profile change 409 while resident or referenced by unfinished runs |
 | DELETE | `/api/models/{id}` | - | 204 | 409 while resident or referenced by unfinished runs; never deletes files |
-| POST | `/api/downloads` | `DownloadCreate` | 202 `DownloadJob` | Separate single-task queue; revision resolved to commit before transfer |
+| POST | `/api/downloads` | `DownloadCreate` | 202 `DownloadJob` | Separate single-task queue; revision resolved to commit before transfer; validated completion atomically registers the selected profile |
 | GET | `/api/downloads` | - | `{jobs: [...]}` | |
 | POST | `/api/downloads/{id}/retry` | - | 202 `DownloadJob` | Reuses cached files |
 | POST | `/api/downloads/{id}/cancel` | - | 202 `DownloadJob` | Queued only; running -> 409 |
@@ -349,10 +350,35 @@ lock on the data directory prevents two servers from sharing it.
   integration mode (`E2E_BASE_URL`) runs `real-backend.spec.ts` against the
   built frontend served by the real Python API with
   `--fake-runtime --fake-hub`, covering onboarding
-  (Discover → download → Local Cache registration), explicit GPU selection
+  (Discover → download → automatic My Models registration), explicit GPU selection
   with a Unicode prompt, two same-page runs, decoded media with exact
   metadata (status/seeds/GPU), browser download events, History
   favorite/Trash/restore, and Eject.
 
 Ordinary tests use isolated temporary XDG directories, perform no network
 access, download no weights, and claim no GPUs.
+
+## Original Anima checkpoint recipes
+
+`ProfileId` additionally accepts `anima-turbo` and `anima-2.9b`; profile defaults
+and field visibility remain owned by `schemas.PROFILES`. Existing Z-Image
+request bodies and registrations remain valid.
+
+Downloads, registrations, frozen models and run details carry `sources`: an
+immutable list of `ModelSource` records (`repo_id`, `commit_sha`, `files`,
+`snapshot_path`). It is server-owned; clients cannot choose arbitrary files or
+component paths. Anima downloads resolve the original checkpoint revision and
+use the pinned official shared-component revision before queueing. Retrying
+keeps this manifest, and registration requires every selected file locally.
+Z-Image retains its existing single-snapshot loading and an empty source list.
+Migration 002 adds JSON source columns to downloads, registrations and runs,
+with an empty-list default preserving existing records. Metadata exports and
+restart reconstruction retain all recorded sources.
+
+The Anima adapter uses native Diffusers modular blocks, original checkpoint
+weights and explicit local component loaders. It never follows model-card
+Python or remote component loading instructions. Depth is 28 for Turbo and 40
+for 2.9B. CFG is set through the modular guider for every image; the native
+step loop reports progress and propagates cooperative cancellation. Successful
+cancellation retains the healthy model. CPU tests use placeholder Hub files
+and synthetic tensors; they are not evidence of verified GPU image quality.
