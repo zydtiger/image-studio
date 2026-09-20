@@ -24,7 +24,7 @@ RUN apt-get update \
 RUN pip install --no-cache-dir uv==0.10.10
 
 WORKDIR /opt/image-studio
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md LICENSE ./
 # Cache inference dependencies independently of application source changes.
 RUN uv sync --locked --no-dev --extra inference --no-install-project
 COPY src/ ./src/

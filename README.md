@@ -163,3 +163,8 @@ CUDA build of `torchvision`, required by Cosmos padding-mask preprocessing.
 Both profiles also produced real 1024 × 1024 PNGs through the live API on an
 RTX 5090 with their default steps/CFG, including a negative prompt for 2.9B.
 See [GPU validation](docs/development.md#anima-gpu-validation) for scope and rerun instructions.
+
+## License
+
+Image Studio's application code is available under the [MIT License](LICENSE).
+Third-party dependencies and model weights retain their respective licenses.
