@@ -72,6 +72,28 @@ uv run --locked image-studio serve --fake-runtime --fake-hub
 Both are for development and tests only; production defaults always use the
 real supervisor and the real Hugging Face Hub.
 
+The application has no authentication and is intended for a single user.
+Exposing the port gives other clients access to
+generation, model downloads, saved images, prompts, and application settings.
+
+## Containers
+
+Build the application image with Podman:
+
+```sh
+podman build -t localhost/image-studio:local .
+```
+
+The image includes the frontend and inference dependencies, but no model weights
+or application data. For a rootless systemd deployment, adapt the
+[Quadlet template](deploy/image-studio.container) to your host. It requires
+Podman with Quadlet support and NVIDIA Container Toolkit configured for CDI.
+Create the host bind directories first; the template uses standard home-directory
+XDG locations and the default Hugging Face Hub cache. Adjust the source paths
+if your XDG directories or model cache live elsewhere, and ensure the container
+user can access them. The template publishes port 7860 on all host IPv4 interfaces.
+Stop any existing backend using the same data directory before starting it.
+
 ## Frontend
 
 ```sh
@@ -108,8 +130,8 @@ assets under `src/image_studio/web/static/`.
 See [architecture and file trees](docs/architecture.md) for the accepted design,
 [the implementation contract](docs/implementation-contract.md) for subsystem
 boundaries and HTTP shapes, and [development](docs/development.md) for
-validation and implementation order. This is a local-only Git repository with
-no remote or release workflow.
+validation and contribution guidance. Source publication targets GitHub;
+there are no published packages, container images, or release workflow.
 
 ## Anima models
 

@@ -2,7 +2,8 @@
 
 ## Purpose and ownership
 
-Image Studio is a local, private, single-user image generation application.
+Image Studio is a local, single-user image generation application intended
+for public source hosting on GitHub.
 Read `README.md` for the implemented state, `docs/architecture.md` for the
 accepted product and storage design, and `docs/development.md` for tooling.
 These documents are repository-owned and must remain self-contained.
@@ -91,7 +92,10 @@ start background services as part of setup or ordinary validation.
 
 ## Git and publication
 
-- The base branch is `main`; this repository is local-only and has no remote.
+- The base branch is `main`; the publication target is a public GitHub repository.
+  Creating the repository or remote and pushing require explicit authorization.
+  Keep repository instructions and development workflows self-contained; do
+  not depend on personal configuration, private tooling, or machine-local paths.
 - Scaffolding may be prepared on the unborn `main`. Once initialized with a
   commit, use short-lived task branches for implementation. Use sibling
   worktrees for substantial or concurrent changes, with one writer per worktree.

@@ -13,14 +13,17 @@ Requires the frontend dependencies and this package's dependencies:
 ```sh
 pnpm --dir frontend install --frozen-lockfile
 pnpm --dir tests/e2e install --frozen-lockfile
+# Install the Chromium revision required by the pinned Playwright package.
+pnpm --dir tests/e2e exec playwright install chromium
 # Playwright only transpiles; typecheck catches unsupported options.
 pnpm --dir tests/e2e run typecheck
 pnpm --dir tests/e2e run test
 ```
 
-`@playwright/test` stays pinned at 1.62.0 because that release matches the
-Chromium build in the shared machine cache (`chromium-1234`); do not
-upgrade it without checking `~/.cache/ms-playwright`.
+`@playwright/test` is pinned in this package's manifest and lockfile. After
+upgrading it, rerun the browser installation command to install its matching
+Chromium revision. If Playwright reports missing Linux system libraries,
+install the reported prerequisites before running browser tests.
 
 ## Two modes
 

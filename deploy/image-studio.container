@@ -1,9 +1,9 @@
-# Rootless deployment for beluga. Build localhost/image-studio:local first.
+# Rootless deployment template. Build localhost/image-studio:local first.
 # Install in ~/.config/containers/systemd/ after creating the host bind directories.
 # Stop any existing backend using the same data directory before starting this unit.
 [Unit]
 Description=Image Studio
-RequiresMountsFor=/mnt/narwhal/models/huggingface/hub
+RequiresMountsFor=%h/.cache/huggingface/hub
 
 [Container]
 Image=localhost/image-studio:local
@@ -29,7 +29,7 @@ Volume=%h/.local/share/image-studio:/data/image-studio:rw
 Volume=%h/.cache/image-studio:/cache/image-studio:rw
 Volume=%h/.local/state/image-studio:/state/image-studio:rw
 # Model snapshots are resolved under the container's XDG cache directory.
-Volume=/mnt/narwhal/models/huggingface/hub:/cache/huggingface/hub:rw
+Volume=%h/.cache/huggingface/hub:/cache/huggingface/hub:rw
 
 StopTimeout=180
 

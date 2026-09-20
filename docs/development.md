@@ -68,8 +68,10 @@ stage, not by `--all-files`.
 Backend behavioral tests run with `uv run --locked pytest` and are wired into
 the commit stage through the `backend-tests` hook. They inject the fake
 runtime and fake Hub from `image_studio.testing` over isolated temporary XDG
-paths and never touch the network, download weights, or claim a GPU. Add
-Vitest/Playwright and their gates when frontend behavior exists. GPU tests
+paths and never touch the network, download weights, or claim a GPU. Frontend
+unit tests use Vitest; browser tests use Playwright. See the
+[browser test setup](../tests/e2e/README.md) for installing Chromium and running
+the two browser test modes. GPU tests
 stay opt-in and must not claim a GPU or download weights during discovery.
 
 ## Implementation sequence
@@ -131,7 +133,22 @@ defaults, checks PNG dimensions and variation, per-step progress, model switchin
 residency and Eject. It releases its worker afterward and writes images into the
 pytest temporary directory. Ordinary test runs exclude it.
 
-## Publication
+## Contributions and publication
 
-Keep Git local. There is no remote, hosted CI, or release workflow. Building a
-wheel is local packaging validation, not authorization to publish it.
+Read the repository's [contribution contract](../AGENTS.md) before making
+changes. Use a short-lived task branch, keep changes focused, and run the
+checks appropriate to the files you change. Include validation results and
+any limitations when submitting a pull request. Documentation-only changes
+need the pre-commit stage on the changed documents; a full local gate uses
+the two all-files commands above.
+
+Source publication targets a public GitHub repository. Review both the current
+tree and the Git history before the first push: removing a file in a later
+commit does not remove it from earlier commits. Keep credentials, personal
+configuration, prompts, generated media, model weights, and machine-specific
+deployment settings outside Git. Git author and committer identities are also
+part of the published history.
+
+Repository creation, remote configuration, commits, and pushes require explicit
+authorization. There is no hosted CI, package publication, or release workflow.
+Building a wheel is local packaging validation, not authorization to publish it.
