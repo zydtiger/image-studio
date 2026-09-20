@@ -2,7 +2,15 @@
 
 ## Setup and scope
 
-Use the setup commands in the root README. `just setup` (owned by the root
+Install the prerequisites listed in the root README, then install the hook
+runner and set up the development environment:
+
+```sh
+uv tool install prek==0.4.14
+just setup
+```
+
+`just setup` (owned by the root
 `justfile`) installs everything: `uv sync --locked` installs the core package
 and development tools without the optional inference stack, the frontend and
 e2e Node dependencies install from their frozen pnpm lockfiles, and `prek install`

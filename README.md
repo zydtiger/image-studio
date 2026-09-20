@@ -1,168 +1,143 @@
 # Image Studio
 
-A local WebUI for Hugging Face model discovery and text-to-image generation
-with Diffusers. The supported profiles are Z-Image, Z-Image-Turbo, Anima-Turbo, and Anima 2.9B.
+A local web app for generating images with Hugging Face models. Discover and
+download models, generate images from prompts, and browse your saved results
+in one interface.
 
-**Status: implemented and integrated (CPU-validated).** The backend server
-(`image-studio serve`), SQLite storage with migrations, Hub discovery, cache
-inspection, fixed-commit downloads, the generation queue with restart
-reconciliation, artifact storage with thumbnails and Trash, the complete
-HTTP API, the real inference supervisor/worker/adapter, and the four-page
-frontend application (Generate, Models, History, Settings) are implemented
-and integrated. CPU-only tests cover the stack end to end using the
-injected fake Hub and the inference fake worker process, including a live
-browser flow against the built frontend served by the real Python API; no
-fake mode claims to be a working inference backend. Real generation
-additionally requires the optional inference extra
-(`uv sync --locked --extra inference`) and an NVIDIA GPU; the opt-in
-real-GPU acceptance suite remains opt-in. Anima-Turbo and Anima 2.9B have
-been verified at 1024 × 1024 on an RTX 5090; this does not certify every
-model, GPU, or runtime scenario.
+Supports **Z-Image, Z-Image-Turbo, Anima-Turbo, and Anima 2.9B** through Diffusers.
+Image generation runs on your own NVIDIA GPU.
 
-## Setup
+## Install and start
 
-Requirements: Linux x86_64, Python 3.12, uv, Node as pinned in `.node-version`,
-pnpm 12.4.2, just, and prek. A GPU is not required to develop or validate the
-backend.
-Install prek as a machine-level tool if it is unavailable, for example with
-`uv tool install prek==0.4.14`; it is not a project dependency.
+### 1. Check requirements
+
+- Linux x86_64.
+- An NVIDIA GPU with enough VRAM for your chosen model and a driver compatible
+  with PyTorch's CUDA 13.0 build. Check that `nvidia-smi` can see your GPU.
+- Git, Python 3.12, uv, Node.js 24.15.0 (also pinned in `.node-version`),
+  pnpm 12.4.2, and just.
+- Disk space for the model downloads and generated images.
+
+If Node.js is installed but pnpm is missing, install the pinned version:
 
 ```sh
-just setup
+npm install --global pnpm@12.4.2
 ```
 
-The root `justfile` owns the orchestration commands. `just setup` runs
-`uv sync --locked` for the base and development Python dependencies (no
-inference extra), installs the frontend and e2e Node dependencies from their
-separate `pnpm-lock.yaml` files with `--frozen-lockfile`, and activates the prek
-hooks. Run `just setup` before development or tests. `just frontend`,
-`just build`, and `just serve` synchronize frontend dependencies before building;
-they do not re-run the full setup or install e2e dependencies and hooks.
-
-The optional inference environment is declared separately. It is required
-for real generation (the inference subsystem ships with the application;
-development and tests run without it):
+### 2. Clone the repository
 
 ```sh
-uv sync --locked --extra inference
+git clone https://github.com/zydtiger/image-studio.git
+cd image-studio
 ```
 
-That extra uses PyTorch's CUDA 13.0 index. Setup never downloads model weights.
-
-## Running the backend
+### 3. Start the app
 
 ```sh
-just serve --host 127.0.0.1 --port 7860
+just serve
 ```
 
-`just serve` synchronizes frontend dependencies, builds the frontend, then
-starts the server with the inference extra. A failed frontend build prevents
-server startup. Host and port default to `127.0.0.1` and `7860`;
-`config.toml` under the XDG config
-directory can override them, and command-line flags win over both
-(CLI > `config.toml` > defaults). Two explicit development flags are
-available and visibly identified in `/api/system` and `/api/runtime`:
+This installs the required dependencies, builds the web interface, and starts
+Image Studio. The first launch can take a while because it installs the GPU
+libraries. Model weights are downloaded separately from the app's Models page.
+
+Open **[http://127.0.0.1:7860](http://127.0.0.1:7860)** in your browser.
+Keep the terminal open while using the app; press `Ctrl+C` to stop it.
+Run `just serve` again from the repository directory to restart it.
+
+### Access from another device
+
+To listen on all network interfaces:
 
 ```sh
-uv run --locked image-studio serve --fake-runtime --fake-hub
+just serve --host 0.0.0.0 --port 7860
 ```
 
-`--fake-runtime` substitutes a deterministic fake inference runtime, and
-`--fake-hub` serves a fake Hub catalog from an isolated temporary cache.
-Both are for development and tests only; production defaults always use the
-real supervisor and the real Hugging Face Hub.
+Open `http://<server-ip>:7860` on the other device. Image Studio has no login
+system: anyone who can reach the port can use the app and access saved images
+and prompts. Use it on a trusted network.
 
-The application has no authentication and is intended for a single user.
-Exposing the port gives other clients access to
-generation, model downloads, saved images, prompts, and application settings.
+## Generate your first image
 
-## Containers
+1. Open **Models → Discover** and search for a supported model repository.
+   Examples: `Tongyi-MAI/Z-Image-Turbo`, `Tongyi-MAI/Z-Image`,
+   `circlestone-labs/Anima`, or `Gazingstars123/Anima-2.9B`.
+2. Open the model details, select the matching profile, and download it.
+   Follow progress under **Downloads**. Once complete, it appears in **My Models**.
+   If you already have a complete supported model in your Hugging Face cache,
+   register it from **Local Cache** instead.
+3. Open **Generate**, select the model and GPU, and enter a prompt.
+   Start with the default settings, then submit the generation.
+4. View or download the finished images. Use **History** to revisit results,
+   mark favorites, reuse parameters, or move runs to Trash and restore them.
 
-Build the application image with Podman:
+Generations run one at a time in submission order. The model stays loaded after
+finishing so the next generation can start faster. Use **Eject** when it is idle
+to free GPU memory; choosing a different model or GPU for a generation also
+replaces the loaded model.
+
+## Where files are stored
+
+Images and settings are stored outside the repository and survive app restarts.
+With the default configuration:
+
+| Content | Location |
+| --- | --- |
+| Generated images and metadata | `~/.local/share/image-studio/outputs/` |
+| History database and Trash | `~/.local/share/image-studio/` |
+| Model downloads | `~/.cache/huggingface/hub/` |
+| Configuration | `~/.config/image-studio/config.toml` |
+
+Existing Hugging Face cache settings and XDG environment variables are respected.
+The **Settings** page shows the paths actually in use and detected GPUs.
+Removing a model from My Models does not delete its cached weights.
+
+## Run with Podman instead
+
+This option requires Podman with Quadlet support and NVIDIA Container Toolkit
+configured for CDI. The image includes the app, web interface, and GPU libraries;
+you do not need the host Python or Node.js toolchain for this route.
+
+From a clone of this repository, build the image:
 
 ```sh
 podman build -t localhost/image-studio:local .
 ```
 
-The image includes the frontend and inference dependencies, but no model weights
-or application data. For a rootless systemd deployment, adapt the
-[Quadlet template](deploy/image-studio.container) to your host. It requires
-Podman with Quadlet support and NVIDIA Container Toolkit configured for CDI.
-Create the host bind directories first; the template uses standard home-directory
-XDG locations and the default Hugging Face Hub cache. Adjust the source paths
-if your XDG directories or model cache live elsewhere, and ensure the container
-user can access them. The template publishes port 7860 on all host IPv4 interfaces.
-Stop any existing backend using the same data directory before starting it.
-
-## Frontend
+Create the default host directories and copy the service template:
 
 ```sh
-pnpm --dir frontend run dev
+mkdir -p ~/.config/image-studio ~/.local/share/image-studio \
+  ~/.cache/image-studio ~/.local/state/image-studio \
+  ~/.cache/huggingface/hub ~/.config/containers/systemd
+cp deploy/image-studio.container ~/.config/containers/systemd/
 ```
 
-The Vite development server binds to loopback and proxies `/api` to a
-backend on `127.0.0.1:7860`; start the backend first (the fake flags give a
-CPU-only development stack). Building writes ignored assets to
-`src/image_studio/web/static/`, which the backend serves with SPA routing:
+Review the copied file before starting it. Adjust its volume source paths if
+using custom data or model-cache locations. A symlink at the host's Hugging Face
+cache path is supported. The template publishes port 7860 on **all host IPv4
+interfaces**, so the network-access note above applies.
+
+Stop any other Image Studio instance using the same data directory, then start
+the user service:
 
 ```sh
-just build
+systemctl --user daemon-reload
+systemctl --user start image-studio.service
 ```
 
-`just frontend` synchronizes frontend dependencies from its frozen lockfile
-and builds the web assets. `just build` runs those steps and then `uv build`.
-A plain `uv build` does not build the frontend and requires already-built
-assets under `src/image_studio/web/static/`.
+Open `http://<server-ip>:7860`. To check logs or stop the service:
 
-## Design
+```sh
+journalctl --user -u image-studio.service -f
+systemctl --user stop image-studio.service
+```
 
-- Choose a GPU for each generation request.
-- Keep one model resident across the entire application, until explicit Eject,
-  a model/GPU change, worker failure, or shutdown. No idle timeout.
-- Reuse the official Hugging Face cache; keep app registration metadata in SQLite.
-- Store fixed repository/commit identities, not cache paths. Registrations,
-  download retries and paused runs resolve snapshots from the current Hugging
-  Face cache configuration, including after moving between host and container.
-  Existing databases migrate automatically on startup; model files must already
-  be present in the selected cache for generation.
-- Keep generated images and per-run metadata outside the repo in XDG data storage.
+## Development
 
-See [architecture and file trees](docs/architecture.md) for the accepted design,
-[the implementation contract](docs/implementation-contract.md) for subsystem
-boundaries and HTTP shapes, and [development](docs/development.md) for
-validation and contribution guidance. Source publication targets GitHub;
-there are no published packages, container images, or release workflow.
-
-## Anima models
-
-Search these original repositories in Models → Discover, select the matching
-profile, and download. Once all files pass validation, the model is automatically
-added to My Models with the selected profile:
-
-| Profile | Repository and checkpoint | Default settings |
-| --- | --- | --- |
-| Anima-Turbo | `circlestone-labs/Anima`, `split_files/diffusion_models/anima-turbo-v1.1.safetensors` | 10 steps, fixed CFG 1, no negative prompt |
-| Anima 2.9B | `Gazingstars123/Anima-2.9B`, `Anima-2.9B-preview-v1.safetensors` | 40 steps, CFG 4, negative prompt supported |
-
-Both default to bfloat16 and 1024 × 1024. Downloads also fetch the required
-shared components from CircleStone's official `Anima-Base-v1.0-Diffusers`
-export at commit `073c3a9db359c31ad0e8aa268d15775473c2176c`. The component
-sources and fixed revisions remain attached to registrations and history.
-The shared export's Base denoiser and text conditioner weights are not downloaded.
-
-Inference uses native Diffusers Anima blocks and Euler flow matching with
-shift 3. Checkpoint conversion happens in memory; there is no converted weight
-copy, ComfyUI dependency, or remote Python execution. Only the two named
-checkpoint recipes are supported, not arbitrary single-file or SD.Next exports.
-The models retain the CircleStone Labs Non-Commercial License.
-
-Anima validation covers fake end-to-end flows and, when the inference extra
-is installed, tiny synthetic CPU tensor conversion and denoiser forward passes
-with the real Diffusers classes. The inference extra includes the matching
-CUDA build of `torchvision`, required by Cosmos padding-mask preprocessing.
-Both profiles also produced real 1024 × 1024 PNGs through the live API on an
-RTX 5090 with their default steps/CFG, including a negative prompt for 2.9B.
-See [GPU validation](docs/development.md#anima-gpu-validation) for scope and rerun instructions.
+For development setup, tests, and builds, see [Development](docs/development.md).
+The [architecture](docs/architecture.md) and
+[implementation contract](docs/implementation-contract.md) describe the internals.
 
 ## License
 
