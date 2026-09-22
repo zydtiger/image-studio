@@ -66,6 +66,8 @@ test("original Anima checkpoints onboard, generate and retain their profile", as
     expect(registration.sources).toHaveLength(2);
 
     await page.goto("/#/generate");
+    // Let the initial model/profile queries populate defaults before switching models.
+    await expect(page.getByLabel("Steps", { exact: true })).not.toHaveValue("");
     await page
       .getByLabel("Model", { exact: true })
       .selectOption(registration.id);
