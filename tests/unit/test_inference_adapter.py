@@ -17,7 +17,8 @@ from types import SimpleNamespace
 import pytest
 
 from image_studio.inference import z_image
-from image_studio.inference.z_image import GenerationCancelled, generate_image
+from image_studio.inference.z_image import GenerationCancelled, ZImageAdapter
+from image_studio.schemas import ProfileId
 
 
 class FakeGenerator:
@@ -87,7 +88,9 @@ def fake_diffusers(monkeypatch):
 
 
 def test_load_pipeline_offline_kwargs(fake_torch, fake_diffusers):
-    pipeline, class_name = z_image.load_pipeline("/snap/path", "bfloat16")
+    pipeline, class_name = ZImageAdapter().load_pipeline(
+        "/snap/path", "bfloat16", ProfileId.Z_IMAGE, ()
+    )
     assert class_name == "FakePipeline"
     assert FakePipeline.pretrained_kwargs["path"] == "/snap/path"
     assert FakePipeline.pretrained_kwargs["torch_dtype"] == "torch.bfloat16"
@@ -102,7 +105,7 @@ def test_load_pipeline_selects_bf16_variant_for_bf16_snapshot(fake_torch, fake_d
     from tests.unit.test_snapshot_validation import _bf16, _complete_files, _write
 
     root = _write(tmp_path / "snap", _bf16(_complete_files()))
-    z_image.load_pipeline(str(root), "bfloat16")
+    ZImageAdapter().load_pipeline(str(root), "bfloat16", ProfileId.Z_IMAGE_TURBO, ())
     assert FakePipeline.pretrained_kwargs["variant"] == "bf16"
     assert FakePipeline.pretrained_kwargs["torch_dtype"] == "torch.bfloat16"
 
@@ -113,19 +116,19 @@ def test_load_pipeline_keeps_default_variant_for_ordinary_snapshot(
     from tests.unit.test_snapshot_validation import _complete_files, _write
 
     root = _write(tmp_path / "snap", _complete_files())
-    z_image.load_pipeline(str(root), "bfloat16")
+    ZImageAdapter().load_pipeline(str(root), "bfloat16", ProfileId.Z_IMAGE, ())
     assert FakePipeline.pretrained_kwargs["variant"] is None
 
 
 def test_load_pipeline_rejects_unsupported_dtype(fake_torch, fake_diffusers):
     with pytest.raises(ValueError, match="unsupported dtype"):
-        z_image.load_pipeline("/snap/path", "float32")
+        ZImageAdapter().load_pipeline("/snap/path", "float32", ProfileId.Z_IMAGE, ())
 
 
 def test_generate_image_exact_kwargs_and_seed(fake_torch, fake_diffusers):
     steps_seen = []
     pipeline = FakePipeline()
-    png = generate_image(
+    png = ZImageAdapter().generate_image(
         pipeline,
         prompt="a cat",
         negative_prompt=None,
@@ -154,7 +157,7 @@ def test_generate_image_exact_kwargs_and_seed(fake_torch, fake_diffusers):
 
 def test_generate_image_passes_negative_prompt_when_present(fake_torch, fake_diffusers):
     pipeline = FakePipeline()
-    generate_image(
+    ZImageAdapter().generate_image(
         pipeline,
         prompt="a cat",
         negative_prompt="blurry",
@@ -175,7 +178,7 @@ def test_step_callback_timestep_kwargs_passthrough(fake_torch, fake_diffusers):
         received[step_index] = True
 
     pipeline = FakePipeline()
-    generate_image(
+    ZImageAdapter().generate_image(
         pipeline,
         prompt="p",
         negative_prompt=None,
@@ -200,7 +203,7 @@ def test_cancellation_raises_from_step_boundary(fake_torch, fake_diffusers):
 
     pipeline = FakePipeline()
     with pytest.raises(GenerationCancelled):
-        generate_image(
+        ZImageAdapter().generate_image(
             pipeline,
             prompt="p",
             negative_prompt=None,
@@ -225,7 +228,7 @@ def test_encode_png_validates_dimensions():
 
 def test_fresh_generator_per_image(fake_torch, fake_diffusers):
     pipeline = FakePipeline()
-    generate_image(
+    ZImageAdapter().generate_image(
         pipeline,
         prompt="p",
         negative_prompt=None,
@@ -236,7 +239,7 @@ def test_fresh_generator_per_image(fake_torch, fake_diffusers):
         seed=10,
         on_step=lambda _s: None,
     )
-    generate_image(
+    ZImageAdapter().generate_image(
         pipeline,
         prompt="p",
         negative_prompt=None,

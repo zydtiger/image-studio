@@ -20,6 +20,7 @@ from __future__ import annotations
 import multiprocessing
 import os
 import sys
+from typing import Any
 
 from image_studio.inference import adapters, z_image
 from image_studio.inference.gpus import normalize_gpu_uuid
@@ -139,7 +140,7 @@ def _drain_pending_commands(
 
 def worker_main(launch: WorkerLaunch, cmd_conn, event_q) -> None:  # type: ignore[no-untyped-def]
     # UUID-based device selection must precede the first torch import, which
-    # happens inside z_image.load_pipeline below.
+    # happens inside the selected adapter's load_pipeline below.
     os.environ["CUDA_VISIBLE_DEVICES"] = launch.gpu_uuid
     os.environ.setdefault("HF_HUB_OFFLINE", "1")
     os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
@@ -171,7 +172,12 @@ def worker_main(launch: WorkerLaunch, cmd_conn, event_q) -> None:  # type: ignor
         _release(pipeline, event_q)
 
 
-def _serve_commands(pipeline: object, cmd_conn, event_q, adapter=z_image) -> None:  # type: ignore[no-untyped-def]
+def _serve_commands(
+    pipeline: object,
+    cmd_conn,
+    event_q,
+    adapter: adapters.PipelineAdapter[Any] = z_image.ZImageAdapter(),
+) -> None:  # type: ignore[no-untyped-def]
     shutdown_requested = False
     while not shutdown_requested:
         if not _parent_alive():
@@ -188,7 +194,13 @@ def _serve_commands(pipeline: object, cmd_conn, event_q, adapter=z_image) -> Non
             shutdown_requested = _execute_run(pipeline, msg.task, cmd_conn, event_q, adapter)
 
 
-def _execute_run(pipeline: object, task: RunTask, cmd_conn, event_q, adapter=z_image) -> bool:  # type: ignore[no-untyped-def]
+def _execute_run(
+    pipeline: object,
+    task: RunTask,
+    cmd_conn,
+    event_q,
+    adapter: adapters.PipelineAdapter[Any] = z_image.ZImageAdapter(),
+) -> bool:  # type: ignore[no-untyped-def]
     """Run one task to a terminal report; returns True when shutdown is due."""
 
     cancel_requested = False
@@ -250,7 +262,7 @@ def _generate_one_image(
     seed: int,
     cmd_conn,
     event_q,  # type: ignore[no-untyped-def]
-    adapter=z_image,
+    adapter: adapters.PipelineAdapter[Any] = z_image.ZImageAdapter(),
 ) -> tuple[bool, bool, bytes]:
     """Generate one image, reporting per-step progress.
 

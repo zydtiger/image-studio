@@ -126,7 +126,7 @@ def test_load_offline_and_adapter_dispatch(torch_stub, monkeypatch):
         sys.modules, "diffusers", SimpleNamespace(QwenImage21Pipeline=QwenImage21Pipeline)
     )
     launch = SimpleNamespace(
-        profile=ProfileId.QWEN_IMAGE_21, snapshot_path="/snapshot", dtype="bfloat16"
+        profile=ProfileId.QWEN_IMAGE_21, snapshot_path="/snapshot", dtype="bfloat16", sources=()
     )
     _, name = adapters.load(launch)
     assert name == "QwenImage21Pipeline"
@@ -178,7 +178,9 @@ def test_generation_exact_signature_progress_seeds_rgba_and_cancel(torch_stub):
         guidance=1.0,
     )
     for seed in (42, 43):
-        png = qwen_image.generate_image(pipeline, **kwargs, seed=seed, on_step=steps.append)
+        png = qwen_image.QwenImageAdapter().generate_image(
+            pipeline, **kwargs, seed=seed, on_step=steps.append
+        )
         with Image.open(io.BytesIO(png)) as image:
             assert image.size == (256, 288)
             assert image.mode == "RGBA"
@@ -192,4 +194,4 @@ def test_generation_exact_signature_progress_seeds_rgba_and_cancel(torch_stub):
             raise GenerationCancelled
 
     with pytest.raises(GenerationCancelled):
-        qwen_image.generate_image(pipeline, **kwargs, seed=44, on_step=cancel)
+        qwen_image.QwenImageAdapter().generate_image(pipeline, **kwargs, seed=44, on_step=cancel)
