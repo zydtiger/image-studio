@@ -175,5 +175,6 @@ deployment settings outside Git. Git author and committer identities are also
 part of the published history.
 
 Repository creation, remote configuration, commits, and pushes require explicit
-authorization. There is no hosted CI, package publication, or release workflow.
+authorization. Source releases follow the [manual release process](releasing.md).
+There is no hosted CI, PyPI publication, or container registry publication.
 Building a wheel is local packaging validation, not authorization to publish it.

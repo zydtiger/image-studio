@@ -145,6 +145,8 @@ systemctl --user stop image-studio.service
 ## Development
 
 For development setup, tests, and builds, see [Development](docs/development.md).
+Version history lives in [GitHub Releases](https://github.com/zydtiger/image-studio/releases); maintainers
+use the [manual release process](docs/releasing.md).
 The [architecture](docs/architecture.md) and
 [implementation contract](docs/implementation-contract.md) describe the internals.
 

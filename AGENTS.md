@@ -27,7 +27,8 @@ images on an RTX 5090; scope verification claims to the evidence in
 
 - Support text-to-image with Z-Image/Z-Image-Turbo through `ZImagePipeline`
   and original Anima-Turbo v1.1/Anima 2.9B Preview v1 through
-  `AnimaModularPipeline`. The Anima recipes pin every checkpoint and shared
+  `AnimaModularPipeline`, and Qwen-Image-2.1 through `QwenImage21Pipeline`.
+  The Anima recipes pin every checkpoint and shared
   component revision; convert original denoiser weights only in memory.
   Generic single-file imports, LoRA, quantization and image-to-image remain
   outside the supported scope.
@@ -112,7 +113,11 @@ start background services as part of setup or ordinary validation.
   authorization for each Git lifecycle action unless already bundled by the user.
 - Preserve unrelated changes, stage exact authorized paths, and inspect the
   staged diff before any approved commit. Merge locally only when authorized.
-- No hosted CI, package publication, or releases are planned. The package
-  version is development metadata, not a published release commitment.
+- Releases are manually published as GitHub source releases with immutable
+  `vX.Y.Z` tags. Follow `docs/releasing.md`; release preparation does not
+  authorize publication. No hosted CI, PyPI publication, or container registry
+  publication is planned. The active GitHub tag ruleset `Immutable release tags`
+  protects `refs/tags/v*` against updates, force-pushes, and deletion, with no
+  bypass actors.
 - Prefer recoverable deletion for user data. Never delete shared model cache
   files as a side effect of removing a library entry.
