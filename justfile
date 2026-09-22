@@ -8,8 +8,8 @@ default:
 frontend-deps:
     pnpm --dir frontend install --frozen-lockfile
 
-# No inference extra, model weights, GPU setup, or background services.
-# Install base and development dependencies and activate the Git hooks.
+# Install runtime and development dependencies and activate the Git hooks.
+# No model weights, GPU execution, or background services.
 setup: frontend-deps
     uv sync --locked
     pnpm --dir tests/e2e install --frozen-lockfile
@@ -25,4 +25,4 @@ build: frontend
 
 # Build the frontend and start the server with inference dependencies.
 serve *args: frontend
-    uv run --locked --extra inference image-studio serve {{args}}
+    uv run --locked image-studio serve {{args}}

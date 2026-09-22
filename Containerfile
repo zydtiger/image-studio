@@ -26,10 +26,10 @@ RUN pip install --no-cache-dir uv==0.10.10
 WORKDIR /opt/image-studio
 COPY pyproject.toml uv.lock README.md LICENSE ./
 # Cache inference dependencies independently of application source changes.
-RUN uv sync --locked --no-dev --extra inference --no-install-project
+RUN uv sync --locked --no-dev --no-install-project
 COPY src/ ./src/
 COPY --from=frontend /build/src/image_studio/web/static/ ./src/image_studio/web/static/
-RUN uv sync --locked --no-dev --extra inference --no-editable
+RUN uv sync --locked --no-dev --no-editable
 
 USER app
 EXPOSE 7860

@@ -1,6 +1,5 @@
 """Adapter mapping and real-stack tiny CPU checks, with no model downloads."""
 
-import importlib.util
 import os
 import subprocess
 import sys
@@ -101,8 +100,6 @@ def test_generation_mapping_and_callback_cleanup(monkeypatch, guidance, negative
 
 
 def test_real_diffusers_conversion_on_tiny_cpu_tensors(tmp_path):
-    if any(importlib.util.find_spec(name) is None for name in ("torch", "diffusers", "accelerate")):
-        pytest.skip("optional inference extra is not installed")
     result = subprocess.run(
         [sys.executable, "-m", "tests.unit.anima_cpu_check", str(tmp_path)],
         env={

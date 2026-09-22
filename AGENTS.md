@@ -17,11 +17,11 @@ supervisor/worker/adapter behind `schemas.Runtime`, and the four-page
 React frontend served by the Python server. All of it is validated by
 CPU-only tests through the injected fake Hub and the inference fake worker
 process, including live browser flows against the built frontend served by
-the real API. Real generation additionally requires the opt-in inference
-extra and a GPU. GPU tests remain opt-in. Anima-Turbo and Anima 2.9B have
-produced real default-parameter 1024 × 1024 images on an RTX 5090; scope
-verification claims to the evidence in `docs/development.md`. Fake modes
-stay visibly identified as development-only.
+the real API. Inference dependencies are installed by default; real generation
+additionally requires model weights and a GPU. GPU tests remain opt-in.
+Anima-Turbo and Anima 2.9B have produced real default-parameter 1024 × 1024
+images on an RTX 5090; scope verification claims to the evidence in
+`docs/development.md`. Fake modes stay visibly identified as development-only.
 
 ## Product boundaries
 
@@ -63,16 +63,15 @@ Use Python 3.12, uv, just, and the Node version in `.node-version`. Change
 Python dependencies through uv and Node dependencies through pnpm; update
 their lockfiles together with manifests. Keep `frontend/` and `tests/e2e/`
 as separate Node projects with their own `pnpm-lock.yaml`; both pin pnpm
-through `packageManager`. Inference dependencies are an opt-in extra.
+through `packageManager`. Inference dependencies are required runtime dependencies.
 
 The root `justfile` owns command orchestration for setup and builds. `just
-setup` installs base and development dependencies and activates the hooks;
+setup` installs all runtime and development dependencies and activates the hooks;
 `just build` builds the frontend and then the Python distribution. Both
 `just setup` and `just frontend` depend on `frontend-deps`, which synchronizes
 frontend dependencies with a frozen lockfile. `just serve` builds the frontend
-before starting the server with the inference extra. Build recipes do not
-re-run the full setup, install e2e dependencies or hooks, download weights, or
-start services.
+before starting the server. Build recipes do not re-run the full setup,
+install e2e dependencies or hooks, download weights, or start services.
 
 `.pre-commit-config.yaml` owns mechanical commands and stage scopes. Activate
 hooks with `prek install`. The `package-build` hook runs `just build` at the

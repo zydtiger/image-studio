@@ -4,8 +4,8 @@ This is the accepted design, now implemented. The backend server, storage,
 Hub integration, HTTP API, the real inference runtime, and the four-page
 frontend application are implemented and validated by CPU-only tests (fake
 Hub, fake worker process, live browser flows against the built frontend);
-real generation requires the opt-in inference extra and a GPU, and the
-real-GPU acceptance suite is opt-in and not yet executed.
+inference dependencies are installed by default; real generation requires model
+weights and a GPU. The real-GPU acceptance suite is opt-in and not yet executed.
 
 ## Product
 
@@ -272,11 +272,11 @@ but no permanent-empty action in v1. Add `inputs/` only when image-to-image exis
 Precedence is CLI, then TOML configuration, then defaults. `--fake-runtime`
 and `--fake-hub` are explicit development-only flags and are visibly
 identified in the runtime and system APIs; the production default composes
-the real inference supervisor, and real generation additionally requires the
-opt-in inference extra and a GPU. No login/account system: anyone able to reach
-an explicitly exposed listener can operate it. Default to loopback and
-same-origin frontend/API; do not automatically configure public ingress or a
-background service.
+the real inference supervisor. Inference dependencies are installed by default;
+real generation additionally requires model weights and a GPU. No login/account
+system: anyone able to reach an explicitly exposed listener can operate it.
+Default to loopback and same-origin frontend/API; do not automatically configure
+public ingress or a background service.
 
 | Endpoint family | Purpose |
 | --- | --- |

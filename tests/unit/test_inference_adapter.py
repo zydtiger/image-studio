@@ -2,9 +2,9 @@
 
 Generation mocks never validate the real pipeline; these tests exist to pin
 the *exact* kwargs, seed, progress, and cancellation wiring the adapter
-passes to a pipeline object, using injected fake modules (the real stack is
-not installed in CPU environments). Real-pipeline verification lives in the
-opt-in GPU tests.
+passes to a pipeline object, using injected fake modules without loading
+model weights or using a GPU. Real-pipeline verification lives in the opt-in
+GPU tests.
 """
 
 from __future__ import annotations

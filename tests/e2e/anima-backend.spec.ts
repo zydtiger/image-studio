@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 // Run against an isolated real API with --fake-runtime --fake-hub.
-// No route interception, actual weights, inference dependencies or GPU required.
+// No route interception, model weights or GPU execution.
 test.beforeEach(() => {
   test.skip(
     !process.env.E2E_BASE_URL,
