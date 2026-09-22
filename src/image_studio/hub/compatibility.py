@@ -1,4 +1,4 @@
-"""Structural compatibility checks for Z-Image pipeline repositories.
+"""Structural compatibility checks for supported pipeline repositories.
 
 The check inspects file listings and declarative configuration only. It
 never executes remote code, never enables ``trust_remote_code``, and never
@@ -19,14 +19,15 @@ from image_studio import schemas
 from image_studio.hub.cache import (
     COMPONENT_CONFIG_FILES,
     COMPONENT_WEIGHT_FILES,
-    REQUIRED_COMPONENTS,
+    PIPELINE_PROFILES,
     SUPPORTED_WEIGHT_VARIANTS,
     manifest_problems,
+    required_components,
     variant_weight_files,
 )
 from image_studio.schemas import ImageStudioError, ProfileId
 
-ALLOW_PATTERNS = ("*.json", "*.txt", "tokenizer*", "*.safetensors")
+ALLOW_PATTERNS = ("*.json", "*.txt", "tokenizer*", "*.safetensors", "processor/chat_template.jinja")
 DISALLOWED_PATTERNS = ("*.bin", "*.pth", "*.pt", "*.ckpt", "*.msgpack", "*.onnx", "*.h5")
 
 
@@ -110,6 +111,7 @@ def check_compatibility(
         findings.append("repository ships Python files; remote code execution is not supported.")
 
     compatible = has_model_index and has_safetensors and not remote_code_files
+    index = None
     if compatible:
         index = _load_model_index(api, repo_id, commit_sha or revision)
         if index is None:
@@ -120,7 +122,12 @@ def check_compatibility(
                 findings.append(problem)
                 compatible = False
 
-    selectable = [ProfileId.Z_IMAGE, ProfileId.Z_IMAGE_TURBO] if compatible else []
+    selectable = list(PIPELINE_PROFILES[index["_class_name"]]) if compatible else []
+    if selectable == [ProfileId.QWEN_IMAGE_21]:
+        notes = [
+            notes[0],
+            "Text-to-image with fixed guidance 1.0; dimensions must be multiples of 32.",
+        ]
     return schemas.CompatibilityReport(
         repo_id=repo_id,
         revision=revision or "main",
@@ -152,7 +159,7 @@ def _remote_manifest_problems(index: object, file_set: set[str]) -> list[str]:
         return details
     if not isinstance(index, dict):
         return details
-    for component in REQUIRED_COMPONENTS:
+    for component in required_components(index):
         for relative in COMPONENT_CONFIG_FILES.get(component, ()):
             if relative not in file_set:
                 details.append(f"{relative} is missing")

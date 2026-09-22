@@ -73,6 +73,7 @@ def test_profile_metadata_is_consumed_not_duplicated():
     assert base.guidance_fixed is None
     assert base.negative_prompt_supported is True
     assert DEFAULT_REPOSITORIES == {
+        ProfileId.QWEN_IMAGE_21: "Qwen/Qwen-Image-2.1",
         ProfileId.ANIMA_TURBO: "circlestone-labs/Anima",
         ProfileId.ANIMA_29B: "Gazingstars123/Anima-2.9B",
         ProfileId.Z_IMAGE: "Tongyi-MAI/Z-Image",

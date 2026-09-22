@@ -68,6 +68,7 @@ const PROFILES: ProfileSpec[] = [
     negative_prompt_supported: true,
     default_width: 1024,
     default_height: 1024,
+    dimension_multiple: 16,
     dtype: "bfloat16",
   },
   {
@@ -81,6 +82,7 @@ const PROFILES: ProfileSpec[] = [
     negative_prompt_supported: false,
     default_width: 1024,
     default_height: 1024,
+    dimension_multiple: 16,
     dtype: "bfloat16",
   },
 ];
@@ -1341,6 +1343,40 @@ describe("GeneratePage", () => {
         ),
       { timeout: 5_000 },
     );
+  });
+});
+
+describe("Qwen capabilities", () => {
+  it("uses fixed guidance and 32-pixel dimension increments", async () => {
+    const profile: ProfileSpec = {
+      ...PROFILES[1],
+      profile_id: "qwen-image-2.1",
+      label: "Qwen-Image-2.1",
+      default_steps: 40,
+      guidance_default: 1,
+      guidance_fixed: 1,
+      dimension_multiple: 32,
+    };
+    renderPage(
+      undefined,
+      [profile],
+      [
+        {
+          ...REGISTRATIONS[0],
+          id: "reg-qwen",
+          repo_id: "Qwen/Qwen-Image-2.1",
+          profile: "qwen-image-2.1",
+        },
+      ],
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("Model")).toHaveValue("reg-qwen"),
+    );
+    expect(screen.getByLabelText("Steps")).toHaveValue(40);
+    expect(screen.getByLabelText("Width")).toHaveAttribute("step", "32");
+    expect(screen.getByLabelText("Height")).toHaveAttribute("step", "32");
+    expect(screen.queryByLabelText("Guidance")).toBeNull();
+    expect(screen.queryByLabelText("Negative prompt")).toBeNull();
   });
 });
 

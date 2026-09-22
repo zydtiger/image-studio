@@ -22,7 +22,7 @@ image-studio = "image_studio.cli:main"
 [project.optional-dependencies]
 inference = [
     "accelerate>=1.15.0",
-    "diffusers>=0.40.0",
+    "diffusers>=0.41.0.dev0",
     "torch>=2.14.0",
     "torchvision>=0.29.0",
     "transformers>=5.17.0",
@@ -58,6 +58,7 @@ environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
 [tool.uv.sources]
 torch = { index = "pytorch-cu130" }
 torchvision = { index = "pytorch-cu130" }
+diffusers = { git = "https://github.com/huggingface/diffusers", rev = "8b3c707ebd3ec4881f4190cf42931da07eaf3b65" }
 
 [dependency-groups]
 dev = [

@@ -2,7 +2,7 @@
 
 Uses ``scan_cache_dir()`` for discovery. The application never modifies the
 shared cache through this module and never treats cache presence as proof a
-model is runnable: ``snapshot_problems`` validates a cached Z-Image snapshot
+model is runnable: ``snapshot_problems`` validates a supported pipeline snapshot
 against the official component manifest — pipeline class, component
 declarations, per-component config/tokenizer files, and weights as either a
 single safetensors file or an index referencing all its shards, in the
@@ -16,10 +16,11 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from image_studio.schemas import CachedRepo, CachedSnapshot, ErrorCode
+from image_studio.schemas import CachedRepo, CachedSnapshot, ErrorCode, ProfileId
 
-#: Pipeline class of the only supported architecture (Base and Turbo share it).
+#: Explicitly supported Diffusers pipeline classes.
 ZIMAGE_PIPELINE_CLASS = "ZImagePipeline"
+QWEN_IMAGE_21_PIPELINE_CLASS = "QwenImage21Pipeline"
 
 #: Components every official Z-Image / Z-Image-Turbo model_index.json declares.
 REQUIRED_COMPONENTS = ("scheduler", "text_encoder", "tokenizer", "transformer", "vae")
@@ -29,6 +30,13 @@ COMPONENT_CONFIG_FILES = {
     "scheduler": ("scheduler/scheduler_config.json",),
     "text_encoder": ("text_encoder/config.json",),
     "tokenizer": ("tokenizer/tokenizer_config.json", "tokenizer/tokenizer.json"),
+    "processor": (
+        "processor/tokenizer_config.json",
+        "processor/tokenizer.json",
+        "processor/preprocessor_config.json",
+        "processor/video_preprocessor_config.json",
+        "processor/chat_template.jinja",
+    ),
     "transformer": ("transformer/config.json",),
     "vae": ("vae/config.json",),
 }
@@ -89,12 +97,12 @@ class SnapshotHit:
     path: Path
 
 
-def _is_zimage_snapshot(root: Path) -> bool:
+def _is_supported_snapshot(root: Path) -> bool:
     try:
         index = json.loads((root / "model_index.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
-    return isinstance(index, dict) and index.get("_class_name") == ZIMAGE_PIPELINE_CLASS
+    return bool(required_components(index))
 
 
 def scan(cache_dir: Path) -> list[CachedRepo]:
@@ -139,7 +147,7 @@ def scan(cache_dir: Path) -> list[CachedRepo]:
 def _snapshot_incomplete(root: Path, repo_id: str | None = None) -> bool:
     """Truthful incompleteness for known required manifests only.
 
-    A readable Z-Image ``model_index.json`` enables exact manifest checks.
+    A supported ``model_index.json`` enables exact manifest checks.
     A snapshot that carries Diffusers component directories but no readable
     manifest is an interrupted pipeline download and counts as incomplete;
     snapshots of other architectures are listed without claiming validated
@@ -152,10 +160,10 @@ def _snapshot_incomplete(root: Path, repo_id: str | None = None) -> bool:
             sources = make_sources(root.parent.parent.parent, repo_id, root.name, profile)
             return bool(model_problems(root, repo_id, profile, sources))
     if (root / "model_index.json").is_file():
-        if not _is_zimage_snapshot(root):
+        if not _is_supported_snapshot(root):
             return False
         return bool(snapshot_problems(root))
-    return any((root / component).is_dir() for component in REQUIRED_COMPONENTS)
+    return any((root / component).is_dir() for component in COMPONENT_CONFIG_FILES)
 
 
 def find_snapshot(repo_id: str, revision: str | None, cache_dir: Path) -> SnapshotHit | None:
@@ -203,7 +211,7 @@ def snapshot_for_commit(repo_id: str, commit_sha: str, cache_dir: Path) -> Snaps
 
 
 # ---------------------------------------------------------------------------
-# Shared Z-Image snapshot validation (registration, downloads, submit, display)
+# Shared pipeline snapshot validation (registration, downloads, submit, display)
 # ---------------------------------------------------------------------------
 
 
@@ -218,13 +226,35 @@ KNOWN_COMPONENT_DECLARATIONS: dict[str, tuple[str, str]] = {
     "vae": ("diffusers", "AutoencoderKL"),
 }
 
+PIPELINE_COMPONENTS = {
+    ZIMAGE_PIPELINE_CLASS: KNOWN_COMPONENT_DECLARATIONS,
+    QWEN_IMAGE_21_PIPELINE_CLASS: {
+        "scheduler": ("diffusers", "FlowMatchEulerDiscreteScheduler"),
+        "text_encoder": ("transformers", "Qwen3VLForConditionalGeneration"),
+        "processor": ("transformers", "Qwen3VLProcessor"),
+        "transformer": ("diffusers", "QwenImage21Transformer2DModel"),
+        "vae": ("diffusers", "AutoencoderKLQwenImage21"),
+    },
+}
+PIPELINE_PROFILES = {
+    ZIMAGE_PIPELINE_CLASS: (ProfileId.Z_IMAGE, ProfileId.Z_IMAGE_TURBO),
+    QWEN_IMAGE_21_PIPELINE_CLASS: (ProfileId.QWEN_IMAGE_21,),
+}
+
+
+def required_components(index: object) -> dict[str, tuple[str, str]]:
+    if not isinstance(index, dict):
+        return {}
+    class_name = index.get("_class_name")
+    return PIPELINE_COMPONENTS.get(class_name, {}) if isinstance(class_name, str) else {}
+
 
 def manifest_problems(index: object) -> list[SnapshotProblem]:
     """Shared declaration rules for local snapshots and remote listings.
 
     Applies the same checks everywhere so local validation and remote
     compatibility can never drift: the manifest must be an object, the
-    pipeline class must be ``ZImagePipeline``, and every required component
+    pipeline class must be explicitly supported, and every required component
     must carry its official ``[library, class]`` declaration. Malformed
     declarations are ``cache_incomplete``; a supported-looking but foreign
     library/class is ``unsupported_model``.
@@ -236,16 +266,17 @@ def manifest_problems(index: object) -> list[SnapshotProblem]:
             )
         ]
     class_name = index.get("_class_name")
-    if class_name != ZIMAGE_PIPELINE_CLASS:
+    components = required_components(index)
+    if not components:
         return [
             SnapshotProblem(
                 ErrorCode.UNSUPPORTED_MODEL,
-                f"unsupported pipeline class {class_name!r}; only {ZIMAGE_PIPELINE_CLASS} "
-                "is supported",
+                f"unsupported pipeline class {class_name!r}; expected "
+                + " or ".join(PIPELINE_COMPONENTS),
             )
         ]
     problems: list[SnapshotProblem] = []
-    for component in REQUIRED_COMPONENTS:
+    for component, expected in components.items():
         declaration = index.get(component)
         if declaration is None:
             problems.append(
@@ -268,7 +299,6 @@ def manifest_problems(index: object) -> list[SnapshotProblem]:
                 )
             )
             continue
-        expected = KNOWN_COMPONENT_DECLARATIONS[component]
         if (declaration[0], declaration[1]) != expected:
             problems.append(
                 SnapshotProblem(
@@ -281,8 +311,8 @@ def manifest_problems(index: object) -> list[SnapshotProblem]:
     return problems
 
 
-def snapshot_problems(root: Path) -> list[SnapshotProblem]:
-    """Validate a local snapshot against the official Z-Image manifest.
+def snapshot_problems(root: Path, profile: ProfileId | None = None) -> list[SnapshotProblem]:
+    """Validate a local snapshot against its pipeline and optional profile.
 
     Offline and dependency-free: reads local files only. Problems carry typed
     codes — ``unsupported_model`` for a foreign architecture,
@@ -304,7 +334,13 @@ def snapshot_problems(root: Path) -> list[SnapshotProblem]:
     problems = manifest_problems(index)
     if any(problem.code is ErrorCode.UNSUPPORTED_MODEL for problem in problems):
         return problems
-    for component in REQUIRED_COMPONENTS:
+    if (
+        profile is not None
+        and isinstance(index, dict)
+        and profile not in PIPELINE_PROFILES.get(index.get("_class_name"), ())
+    ):
+        return [SnapshotProblem(ErrorCode.UNSUPPORTED_MODEL, "profile does not match the pipeline")]
+    for component in required_components(index):
         for relative in COMPONENT_CONFIG_FILES.get(component, ()):
             if not (root / relative).is_file():
                 problems.append(

@@ -21,6 +21,7 @@ from image_studio.schemas import (
 #: convenience; the runtime itself only ever uses the backend-verified
 #: ``snapshot_path`` from a ``FrozenRunSpec``).
 DEFAULT_REPOSITORIES: dict[ProfileId, str] = {
+    ProfileId.QWEN_IMAGE_21: "Qwen/Qwen-Image-2.1",
     ProfileId.ANIMA_TURBO: "circlestone-labs/Anima",
     ProfileId.ANIMA_29B: "Gazingstars123/Anima-2.9B",
     ProfileId.Z_IMAGE: "Tongyi-MAI/Z-Image",

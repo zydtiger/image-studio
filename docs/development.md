@@ -141,6 +141,22 @@ defaults, checks PNG dimensions and variation, per-step progress, model switchin
 residency and Eject. It releases its worker afterward and writes images into the
 pytest temporary directory. Ordinary test runs exclude it.
 
+## Qwen-Image-2.1 validation
+
+The inference dependency is pinned in `pyproject.toml` and `uv.lock` to Diffusers
+commit `8b3c707ebd3ec4881f4190cf42931da07eaf3b65` (0.41.0.dev0), which includes
+`QwenImage21Pipeline`; Diffusers 0.40.0 does not provide that class. Transformers
+5.17 or later provides its Qwen3-VL processor and text encoder. Use the locked uv
+environment for inference.
+
+CPU tests cover pipeline/component compatibility, processor file selection,
+fixed-revision downloads, automatic registration, profile mismatch rejection,
+generation defaults and dimensions, offline loader arguments, per-image seeds,
+step progress/cancellation and RGBA PNG encoding. Frontend tests cover its fixed
+guidance controls and 32-pixel dimension increments. These tests use fake providers
+and do not verify real model loading, output quality or GPU memory requirements.
+No Qwen weights or GPU inference are required for ordinary validation.
+
 ## Contributions and publication
 
 Read the repository's [contribution contract](../AGENTS.md) before making

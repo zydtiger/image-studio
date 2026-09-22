@@ -181,7 +181,7 @@ export function GenerationForm({
           value={form.width}
           min={256}
           max={2048}
-          step={16}
+          step={profileSpec?.dimension_multiple ?? 16}
           onChange={(event) => onChange({ width: event.target.value })}
         />
         <NumberField
@@ -191,7 +191,7 @@ export function GenerationForm({
           value={form.height}
           min={256}
           max={2048}
-          step={16}
+          step={profileSpec?.dimension_multiple ?? 16}
           onChange={(event) => onChange({ height: event.target.value })}
         />
         <NumberField

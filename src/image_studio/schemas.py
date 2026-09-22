@@ -64,6 +64,7 @@ class ProfileId(StrEnum):
     Z_IMAGE_TURBO = "z-image-turbo"
     ANIMA_TURBO = "anima-turbo"
     ANIMA_29B = "anima-2.9b"
+    QWEN_IMAGE_21 = "qwen-image-2.1"
 
 
 class WorkerState(StrEnum):
@@ -205,11 +206,26 @@ class ProfileSpec(BaseModel):
     negative_prompt_supported: bool
     default_width: int
     default_height: int
+    dimension_multiple: int = DIMENSION_MULTIPLE
     dtype: str
 
 
 PROFILES: Final[Mapping[ProfileId, ProfileSpec]] = types.MappingProxyType(
     {
+        ProfileId.QWEN_IMAGE_21: ProfileSpec(
+            profile_id=ProfileId.QWEN_IMAGE_21,
+            label="Qwen-Image-2.1",
+            default_steps=40,
+            min_steps=1,
+            max_steps=100,
+            guidance_default=1.0,
+            guidance_fixed=1.0,
+            negative_prompt_supported=False,
+            default_width=1024,
+            default_height=1024,
+            dimension_multiple=32,
+            dtype=DEFAULT_DTYPE,
+        ),
         ProfileId.ANIMA_TURBO: ProfileSpec(
             profile_id=ProfileId.ANIMA_TURBO,
             label="Anima-Turbo",
@@ -302,6 +318,14 @@ def validate_generation(request: GenerationRequest, profile: ProfileSpec) -> Non
     that makes wrap-around impossible.
     """
 
+    for field in ("width", "height"):
+        if getattr(request, field) % profile.dimension_multiple:
+            raise ContractViolationError(
+                f"{field} must be a multiple of {profile.dimension_multiple} "
+                f"for {profile.profile_id.value}",
+                reason="dimension_multiple",
+                details={"field": field, "profile": profile.profile_id.value},
+            )
     if request.steps is not None and not (profile.min_steps <= request.steps <= profile.max_steps):
         raise ContractViolationError(
             f"steps must be {profile.min_steps}-{profile.max_steps} for {profile.profile_id.value}",

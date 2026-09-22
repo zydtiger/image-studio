@@ -21,6 +21,7 @@ export type DimensionValidation = { ok: true } | { ok: false; message: string };
 export function validateDimension(
   value: number,
   label = "Dimension",
+  step = DIMENSION_STEP,
 ): DimensionValidation {
   if (!Number.isInteger(value)) {
     return { ok: false, message: `${label} must be a whole number.` };
@@ -31,10 +32,10 @@ export function validateDimension(
       message: `${label} must be between ${MIN_DIMENSION} and ${MAX_DIMENSION} pixels.`,
     };
   }
-  if (value % DIMENSION_STEP !== 0) {
+  if (value % step !== 0) {
     return {
       ok: false,
-      message: `${label} must be a multiple of ${DIMENSION_STEP}.`,
+      message: `${label} must be a multiple of ${step}.`,
     };
   }
   return { ok: true };

@@ -7,7 +7,7 @@
 export const MAX_SEED = 4294967295;
 
 export type ProfileId =
-  "z-image" | "z-image-turbo" | "anima-turbo" | "anima-2.9b";
+  "z-image" | "z-image-turbo" | "anima-turbo" | "anima-2.9b" | "qwen-image-2.1";
 
 export interface ModelSource {
   repo_id: string;
@@ -68,6 +68,7 @@ export interface ProfileSpec {
   negative_prompt_supported: boolean;
   default_width: number;
   default_height: number;
+  dimension_multiple: number;
   dtype: string;
 }
 

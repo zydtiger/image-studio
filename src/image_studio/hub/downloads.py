@@ -249,14 +249,14 @@ class DownloadEngine:
         snapshot = snapshot_for_commit(repo_id, commit, self._cache_dir)
         if snapshot is None:
             raise RuntimeError("downloaded snapshot not found in cache")
-        problems = snapshot_problems(snapshot.path)
+        problems = snapshot_problems(snapshot.path, self._repository.get_download(job_id).profile)
         if problems:
             self._persist(
                 self._repository.finish_download,
                 job_id,
                 DownloadStatus.FAILED,
                 error_code=problem_codes(problems),
-                error_message="snapshot does not satisfy the Z-Image component manifest: "
+                error_message="snapshot does not satisfy its pipeline component manifest: "
                 + "; ".join(problem.detail for problem in problems),
             )
             return

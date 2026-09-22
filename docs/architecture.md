@@ -42,7 +42,8 @@ and shared cache deletion. Add image-to-image later as a distinct capability.
 ## Models and residency
 
 Use explicit built-in adapters: `ZImagePipeline` for Z-Image and
-`AnimaModularPipeline` for the two original-checkpoint Anima recipes:
+`AnimaModularPipeline` for the two original-checkpoint Anima recipes, and
+`QwenImage21Pipeline` for Qwen-Image-2.1 text-to-image:
 
 | Profile | Default repo | Steps | Guidance | Negative prompt |
 | --- | --- | --- | --- | --- |
@@ -50,9 +51,10 @@ Use explicit built-in adapters: `ZImagePipeline` for Z-Image and
 | Z-Image-Turbo | `Tongyi-MAI/Z-Image-Turbo` | 9 | Fixed at 0.0 | Hidden |
 | Anima-Turbo | `circlestone-labs/Anima` (Turbo v1.1) | 10 | Fixed at 1.0 | Hidden |
 | Anima 2.9B | `Gazingstars123/Anima-2.9B` (Preview v1) | 40 | 4.0 | Supported |
+| Qwen-Image-2.1 | `Qwen/Qwen-Image-2.1` | 40 | Fixed at 1.0 | Hidden |
 
 Default to bfloat16 and 1024 x 1024. Accept dimensions from 256 to 2048 in
-multiples of 16 and 1-4 sequential images per request. Resolve an empty seed
+multiples of 16 (32 for Qwen-Image-2.1) and 1-4 sequential images per request. Resolve an empty seed
 at submission, use increasing seeds within a run, and record each actual seed.
 Use real text-to-image; do not manufacture a blank image for an img2img pipeline.
 
@@ -60,6 +62,13 @@ For compatible derivative repos, inspect pipeline/component declarations and
 let the user explicitly choose Base or Turbo. A shared pipeline class does not
 identify distillation type. Do not imply that structural compatibility guarantees
 output quality. No remote Python code execution or `trust_remote_code`.
+
+Qwen-Image-2.1 declares a Qwen3-VL text encoder and processor, its own transformer
+and VAE, and a FlowMatch scheduler. Validate those declarations and the processor's
+tokenizer, image/video configuration and chat template in remote listings and local
+snapshots. Its profile fixes `true_cfg_scale=1.0` and enables the pipeline's KV
+cache. Reject mismatched profiles and dimensions before inference. Preserve the
+returned PNG's alpha channel; image editing remains outside the application scope.
 
 Run one API process, one global FIFO generation queue, and at most one resident
 inference worker. Every request specifies a GPU UUID. The API process never owns

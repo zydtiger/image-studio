@@ -178,14 +178,22 @@ export function validateForm(
   if (width.error !== undefined || width.value === undefined) {
     errors.width = width.error;
   } else {
-    const check = validateDimension(width.value, "Width");
+    const check = validateDimension(
+      width.value,
+      "Width",
+      spec?.dimension_multiple,
+    );
     if (!check.ok) errors.width = check.message;
   }
   const height = parsePositiveInt(state.height, "a height");
   if (height.error !== undefined || height.value === undefined) {
     errors.height = height.error;
   } else {
-    const check = validateDimension(height.value, "Height");
+    const check = validateDimension(
+      height.value,
+      "Height",
+      spec?.dimension_multiple,
+    );
     if (!check.ok) errors.height = check.message;
   }
 

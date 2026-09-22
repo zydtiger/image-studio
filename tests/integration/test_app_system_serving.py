@@ -32,7 +32,13 @@ def test_system_info_reports_paths_gpus_and_development_flags(harness) -> None:
 def test_profiles_capability_metadata(harness) -> None:
     profiles = harness.client.get("/api/profiles").json()["profiles"]
     by_id = {profile["profile_id"]: profile for profile in profiles}
-    assert set(by_id) == {"z-image", "z-image-turbo", "anima-turbo", "anima-2.9b"}
+    assert set(by_id) == {"z-image", "z-image-turbo", "anima-turbo", "anima-2.9b", "qwen-image-2.1"}
+    qwen = by_id["qwen-image-2.1"]
+    assert qwen["default_steps"] == 40
+    assert qwen["guidance_fixed"] == 1.0
+    assert qwen["negative_prompt_supported"] is False
+    assert qwen["dimension_multiple"] == 32
+    assert by_id["z-image"]["dimension_multiple"] == 16
     assert by_id["z-image-turbo"]["guidance_fixed"] == 0.0
     assert by_id["z-image-turbo"]["negative_prompt_supported"] is False
     assert by_id["z-image"]["default_steps"] == 50

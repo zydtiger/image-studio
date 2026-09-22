@@ -32,7 +32,9 @@ function RegisterSnapshotDialog({
       ? "anima-turbo"
       : repo.repo_id === "Gazingstars123/Anima-2.9B"
         ? "anima-2.9b"
-        : "z-image",
+        : repo.repo_id === "Qwen/Qwen-Image-2.1"
+          ? "qwen-image-2.1"
+          : "z-image",
   );
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string>();
@@ -91,6 +93,7 @@ function RegisterSnapshotDialog({
         <option value="z-image-turbo">z-image-turbo</option>
         <option value="anima-turbo">anima-turbo</option>
         <option value="anima-2.9b">anima-2.9b</option>
+        <option value="qwen-image-2.1">qwen-image-2.1</option>
       </SelectField>
       <TextField
         id="register-display-name"

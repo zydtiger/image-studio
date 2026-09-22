@@ -22,6 +22,7 @@ const Z_IMAGE: ProfileSpec = {
   negative_prompt_supported: true,
   default_width: 1024,
   default_height: 1024,
+  dimension_multiple: 16,
   dtype: "bfloat16",
 };
 
@@ -298,6 +299,38 @@ describe("buildRequest", () => {
     expect(request.seed).toBeNull();
     expect(request.steps).toBe(60);
   });
+});
+
+it("rejects Qwen dimensions that would be rounded by the pipeline", () => {
+  const spec: ProfileSpec = {
+    ...Z_IMAGE_TURBO,
+    profile_id: "qwen-image-2.1",
+    label: "Qwen-Image-2.1",
+    default_steps: 40,
+    guidance_default: 1,
+    guidance_fixed: 1,
+    dimension_multiple: 32,
+  };
+  const state = {
+    ...applyProfileDefaults(EMPTY_FORM, spec),
+    registrationId: "qwen",
+    gpuUuid: "gpu-0",
+    prompt: "mountain 山",
+    width: "272",
+    height: "528",
+  };
+  expect(validateForm(state, spec).errors).toEqual({
+    width: "Width must be a multiple of 32.",
+    height: "Height must be a multiple of 32.",
+  });
+  const { values, errors } = validateForm(
+    { ...state, width: "288", height: "544" },
+    spec,
+  );
+  expect(errors).toEqual({});
+  const request = buildRequest(values, spec);
+  expect(request.guidance).toBeNull();
+  expect(request.negative_prompt).toBeNull();
 });
 
 it.each(["anima-turbo", "anima-2.9b"] as const)(

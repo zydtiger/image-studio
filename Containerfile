@@ -18,7 +18,7 @@ ENV PYTHONUNBUFFERED=1 \
     HOME=/home/app
 
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends libgomp1 \
+    && apt-get install --yes --no-install-recommends git libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 1000 app
 RUN pip install --no-cache-dir uv==0.10.10

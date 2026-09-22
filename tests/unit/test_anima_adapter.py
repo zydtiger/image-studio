@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from image_studio.inference import adapters, anima, z_image
+from image_studio.inference import adapters, anima, qwen_image, z_image
 from image_studio.inference.z_image import GenerationCancelled
 from image_studio.schemas import ProfileId
 from tests.unit.test_inference_adapter import FakeGenerator, FakeImage
@@ -34,7 +34,10 @@ def test_checkpoint_prefixes_and_depth(layers):
 
 @pytest.mark.parametrize("profile", list(ProfileId))
 def test_explicit_adapter_selection(profile):
-    expected = anima if profile.value.startswith("anima-") else z_image
+    if profile is ProfileId.QWEN_IMAGE_21:
+        expected = qwen_image
+    else:
+        expected = anima if profile.value.startswith("anima-") else z_image
     assert adapters.for_profile(profile) is expected
 
 

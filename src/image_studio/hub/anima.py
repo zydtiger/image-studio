@@ -128,7 +128,7 @@ def model_problems(
     except ImageStudioError as exc:
         return [SnapshotProblem(exc.code, exc.message)]
     if recipe is None:
-        return snapshot_problems(root)
+        return snapshot_problems(root, profile)
     if len(sources) != 2:
         return [SnapshotProblem(ErrorCode.CACHE_INCOMPLETE, "Anima component sources are missing")]
     primary, shared = sources
