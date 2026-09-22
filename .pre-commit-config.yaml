@@ -25,6 +25,11 @@ repos:
           - --multiline
           - '\A(feat|fix|docs|refactor|test|build|chore)(\([a-z0-9-]+\))?: [a-z]([^\r\n]*[^.\r\n])?$'
 
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
   - repo: local
     hooks:
       - id: uv-lock-check
@@ -35,13 +40,13 @@ repos:
         files: ^(pyproject\.toml|uv\.lock)$
       - id: ruff-check
         name: Python lint
-        entry: uv run --locked ruff check
+        entry: uv run --locked --only-group dev ruff check
         language: system
         pass_filenames: false
         types_or: [python, pyi]
       - id: ruff-format
         name: Python format
-        entry: uv run --locked ruff format
+        entry: uv run --locked --only-group dev ruff format --check
         language: system
         types_or: [python, pyi]
       - id: backend-tests
@@ -49,7 +54,8 @@ repos:
         entry: uv run --locked pytest -q
         language: system
         pass_filenames: false
-        files: ^(src/image_studio/|tests/(unit|integration)/|pyproject\.toml)
+        files: ^(src/image_studio/|tests/(unit|integration)/|pyproject\.toml|uv\.lock|\.pre-commit-config\.yaml)
+        stages: [pre-push]
       - id: frontend-lint
         name: frontend lint
         entry: pnpm --dir frontend run lint
@@ -67,6 +73,13 @@ repos:
         entry: pnpm --dir frontend run test
         language: system
         pass_filenames: false
+        files: ^(frontend/|\.pre-commit-config\.yaml)
+        stages: [pre-push]
+      - id: frontend-typecheck
+        name: frontend TypeScript typecheck
+        entry: pnpm --dir frontend run typecheck
+        language: system
+        pass_filenames: false
         files: ^frontend/
       - id: e2e-typecheck
         name: e2e TypeScript typecheck
@@ -74,17 +87,17 @@ repos:
         language: system
         pass_filenames: false
         files: ^tests/e2e/
-      - id: e2e-test
-        name: e2e browser tests
+      - id: e2e-mocked-tests
+        name: mocked API browser tests
         entry: pnpm --dir tests/e2e run test
         language: system
         pass_filenames: false
-        files: ^tests/e2e/
+        files: ^(frontend/|src/image_studio/|tests/e2e/|\.pre-commit-config\.yaml)
         stages: [pre-push]
-      - id: package-build
-        name: frontend typecheck and build, then Python package build
-        entry: just build
+      - id: e2e-check
+        name: installed-wheel end-to-end tests
+        entry: just e2e-check
         language: system
         pass_filenames: false
-        files: '^(frontend/|src/|pyproject\.toml|uv\.lock|README\.md|\.pre-commit-config\.yaml|justfile)'
+        files: '^(frontend/|src/|tests/e2e/|scripts/|pyproject\.toml|uv\.lock|README\.md|\.pre-commit-config\.yaml|justfile|\.github/workflows/)'
         stages: [pre-push]

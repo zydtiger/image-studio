@@ -104,7 +104,10 @@ test("narrow viewport menu closes after navigation", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 720 });
 
   await page.getByRole("button", { name: "Open navigation menu" }).click();
-  await page.getByRole("link", { name: "History" }).click();
+  await page
+    .getByRole("navigation", { name: "Primary" })
+    .getByRole("link", { name: "History", exact: true })
+    .click();
   await expect(page).toHaveURL(/#\/history$/);
   await expect(
     page.getByRole("button", { name: "Open navigation menu" }),

@@ -23,17 +23,32 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: [["list"]],
+  reporter: process.env.CI
+    ? [
+        ["list"],
+        [
+          "html",
+          {
+            outputFolder: realBase
+              ? "playwright-report/integration"
+              : "playwright-report/mocked",
+            open: "never",
+          },
+        ],
+      ]
+    : [["list"]],
+  outputDir: realBase ? "test-results/integration" : "test-results/mocked",
   use: {
     baseURL: realBase ?? "http://127.0.0.1:5199",
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
   webServer: realBase
     ? undefined
     : {
-        command:
-          "pnpm --dir ../../frontend run dev --port 5199 --strictPort",
+        command: "pnpm --dir ../../frontend run dev --port 5199 --strictPort",
         url: "http://127.0.0.1:5199",
-        reuseExistingServer: true,
+        reuseExistingServer: !process.env.CI,
         timeout: 120_000,
       },
   projects: [

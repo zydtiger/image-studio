@@ -61,3 +61,15 @@ install the reported prerequisites before running browser tests.
   (filters/favorites/trash/reuse), `settings.spec.ts`.
 - `screenshots.spec.ts` writes representative desktop/narrow captures to
   `test-results/` (gitignored).
+
+## Automated integration
+
+From the repository root, `just e2e-check` builds the frontend and wheel,
+installs the wheel into a temporary environment, and runs integration-mode
+browser tests against an isolated fake-provider server. The runner owns server
+startup, readiness, and cleanup; it never uses the regular application's data.
+The recipe installs frontend and browser-test dependencies; install Chromium
+first as described above. Both local pre-push hooks and CI run this through the
+`e2e-check` hook, including a fresh build. Failure traces, screenshots, and server
+logs are retained under `test-results/`; CI also creates HTML reports under
+`playwright-report/`, with separate subdirectories for the two browser modes.

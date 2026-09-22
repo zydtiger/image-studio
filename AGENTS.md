@@ -75,8 +75,12 @@ before starting the server. Build recipes do not re-run the full setup,
 install e2e dependencies or hooks, download weights, or start services.
 
 `.pre-commit-config.yaml` owns mechanical commands and stage scopes. Activate
-hooks with `prek install`. The `package-build` hook runs `just build` at the
-pre-push stage. Run `prek run --all-files` and
+hooks with `prek install`. The pre-commit stage runs static checks.
+The pre-push stage runs backend, frontend, and browser tests; its `e2e-check`
+hook builds fresh frontend assets and Python packages, then checks the installed
+wheel against an isolated fake-provider server. CI runs both stages through
+`prek-action`, without separate check lists or manual-stage hooks.
+Run `prek run --all-files` and
 `prek run --all-files --stage pre-push` for a full local gate. For untracked
 scaffold files, pass the explicit file list with `--files`; `--all-files` only
 checks tracked files. For documentation-only edits, run the pre-commit stage
@@ -86,7 +90,7 @@ and changed files rather than repeating all passing gates.
 Backend behavioral tests live in `tests/unit/` and `tests/integration/` and
 run through the `backend-tests` hook. They use the fake runtime and fake Hub
 with isolated temporary data paths: no network, no weight downloads, no GPU.
-Frontend unit tests run through the `frontend-tests` hook and browser tests through the `e2e-typecheck` and `e2e-test` hooks.
+Frontend unit tests run through the `frontend-tests` hook and browser tests through the `e2e-typecheck`, `e2e-mocked-tests`, and `e2e-check` hooks.
 Keep GPU tests opt-in. Do not download models, run inference, claim GPUs, or
 start background services as part of setup or ordinary validation.
 
@@ -115,8 +119,9 @@ start background services as part of setup or ordinary validation.
   staged diff before any approved commit. Merge locally only when authorized.
 - Releases are manually published as GitHub source releases with immutable
   `vX.Y.Z` tags. Follow `docs/releasing.md`; release preparation does not
-  authorize publication. No hosted CI, PyPI publication, or container registry
-  publication is planned. The active GitHub tag ruleset `Immutable release tags`
+  authorize publication. GitHub Actions runs the local validation hooks on Ubuntu.
+  No PyPI or container registry publication is planned. The active GitHub tag
+  ruleset `Immutable release tags`
   protects `refs/tags/v*` against updates, force-pushes, and deletion, with no
   bypass actors.
 - Prefer recoverable deletion for user data. Never delete shared model cache

@@ -5,7 +5,8 @@ Install from the tagged checkout using uv and the committed lockfile, or build
 the Podman image from that checkout. Wheels and sdists are local packaging
 validation artifacts, not independently supported release downloads: a plain
 pip installation does not apply the repository's uv Git and CUDA source settings.
-There is no PyPI or container registry publication workflow and no hosted CI.
+GitHub Actions validates changes on `ubuntu-latest`; it does not publish releases,
+PyPI packages, or container images.
 
 ## Version and history
 

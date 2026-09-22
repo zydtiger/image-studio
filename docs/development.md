@@ -67,15 +67,16 @@ git ls-files --others --exclude-standard -z |
 ```
 
 The commit stage includes structural and whitespace checks, the uv lock check,
-Python lint/format, and frontend lint/format. The push stage builds the Python
-distribution through `just build`, which type-checks and builds the frontend
-first and includes the generated web assets. The frontend scripts own Node
+Python lint/format, frontend lint/format, and frontend/browser TypeScript checks.
+The push stage runs backend and frontend unit tests, mocked browser tests, and
+`just e2e-check`. That recipe builds fresh frontend assets and Python
+packages, then runs browser integration against the installed wheel. The frontend scripts own Node
 commands; hooks invoke them through the package, and the root justfile owns
 the build orchestration. Commit subjects are validated at the commit-msg
 stage, not by `--all-files`.
 
 Backend behavioral tests run with `uv run --locked pytest` and are wired into
-the commit stage through the `backend-tests` hook. They inject the fake
+the push stage through the `backend-tests` hook. They inject the fake
 runtime and fake Hub from `image_studio.testing` over isolated temporary XDG
 paths and never touch the network, download weights, or claim a GPU. Frontend
 unit tests use Vitest; browser tests use Playwright. See the
@@ -176,5 +177,50 @@ part of the published history.
 
 Repository creation, remote configuration, commits, and pushes require explicit
 authorization. Source releases follow the [manual release process](releasing.md).
-There is no hosted CI, PyPI publication, or container registry publication.
+GitHub Actions runs validation on `ubuntu-latest`. There is no PyPI or
+container registry publication.
 Building a wheel is local packaging validation, not authorization to publish it.
+
+## GitHub Actions
+
+`.github/workflows/ci.yml` runs on pull requests, pushes to `main`, and manual
+requests. One `ubuntu-latest` job installs dependencies once and runs the full
+pre-commit and pre-push stages through SHA-pinned `j178/prek-action`. Python is
+3.12; Node/pnpm follow `.node-version` and the frontend's `packageManager` field.
+New runs cancel older runs for the same ref. Actions have read-only permissions.
+
+The hook configuration is the single list of checks for local use and CI:
+
+| Stage | Checks |
+| --- | --- |
+| `pre-commit` | File hygiene, actionlint, lock consistency, Python/frontend lint and format checks, frontend/browser TypeScript checks |
+| `commit-msg` | Commit subject convention; runs locally when committing |
+| `pre-push` | Backend tests, frontend unit tests, mocked Chromium E2E, fresh frontend/package build and installed-wheel browser integration |
+
+There are no manual-stage hooks or cross-job build artifacts. `just build`
+builds distributable packages without starting a server. `just e2e-check`
+depends on that build and synchronizes browser-test dependencies before checking
+those packages, so it can be run directly without preparing static assets first.
+Install Playwright Chromium once as described in the browser test setup.
+
+```sh
+just e2e-check
+```
+
+The package check installs the wheel into a temporary environment with the locked
+runtime dependencies. It verifies the imported package comes from that
+installation, checks bundled frontend assets and the CLI, then runs browser tests
+against the installed server with fake providers and isolated XDG/Hugging Face
+paths. The server uses a temporary loopback port and stops after the check,
+including on failure. No model downloads or GPU inference occur.
+
+Browser failures retain traces, screenshots, HTML reports, and the integration
+server log under `tests/e2e/`; CI uploads those diagnostics. Successful packages
+are CI artifacts, not published releases. Mocked and integration reports use
+separate directories. The frontend is built once per push-stage run.
+
+uv and pnpm downloads are cached; Playwright installs its pinned Chromium and
+Linux dependencies on the runner. Dependabot checks Actions weekly and Python,
+Node, and remote hook dependencies monthly. The action selects prek `0.4.x`;
+this version range and the rust-just installer version are maintained manually.
+Keep prek at or above the hook configuration's minimum version.
