@@ -118,7 +118,7 @@ Create the default host directories and copy the service template:
 ```sh
 mkdir -p ~/.config/image-studio ~/.local/share/image-studio \
   ~/.cache/image-studio ~/.local/state/image-studio \
-  ~/.cache/huggingface/hub ~/.config/containers/systemd
+  ~/.cache/huggingface/hub ~/.cache/huggingface/xet ~/.config/containers/systemd
 cp deploy/image-studio.container ~/.config/containers/systemd/
 ```
 

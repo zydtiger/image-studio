@@ -30,6 +30,8 @@ Volume=%h/.cache/image-studio:/cache/image-studio:rw
 Volume=%h/.local/state/image-studio:/state/image-studio:rw
 # Model snapshots are resolved under the container's XDG cache directory.
 Volume=%h/.cache/huggingface/hub:/cache/huggingface/hub:rw
+# Share the host's Xet transfer cache at Hugging Face's default location.
+Volume=%h/.cache/huggingface/xet:/cache/huggingface/xet:rw
 
 StopTimeout=180
 
