@@ -174,7 +174,11 @@ image-studio/
 │   │   └── client.py, cache.py, compatibility.py,
 │   │       downloads.py
 │   ├── inference/
-│   │   └── supervisor.py, worker.py, z_image.py,
+│   │   ├── adapters/
+│   │   │   ├── __init__.py                         # explicit profile dispatch
+│   │   │   ├── base.py                             # typed adapter interface
+│   │   │   └── z_image.py, qwen_image.py, anima.py
+│   │   └── common.py, supervisor.py, worker.py,
 │   │       profiles.py, gpus.py, protocol.py, fake.py
 │   ├── storage/
 │   │   ├── database.py, repository.py, artifacts.py
@@ -198,6 +202,12 @@ Use one Python package, not a uv workspace. The frontend owns rendering and
 typed API access; the backend owns compatibility, validation, GPU lifecycle,
 downloads, and persistence. Use a small explicit adapter registry for the supported architectures;
 there is no dynamic plugin framework.
+
+`inference/adapters/` contains the model implementations and profile dispatch.
+`inference/adapters/base.py` defines their shared typed interface; `inference/common.py`
+owns cancellation, step callbacks, dtype resolution, dependency metadata and PNG
+encoding used by adapters and the worker. Shared helpers do not depend on a model
+adapter, and importing these modules does not load the inference dependencies.
 
 ## Application data tree
 

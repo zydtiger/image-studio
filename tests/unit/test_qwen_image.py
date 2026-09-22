@@ -10,8 +10,9 @@ from PIL import Image
 
 from image_studio.hub.cache import _snapshot_incomplete, snapshot_problems
 from image_studio.hub.compatibility import check_compatibility, filter_files
-from image_studio.inference import adapters, qwen_image
-from image_studio.inference.z_image import GenerationCancelled
+from image_studio.inference import adapters
+from image_studio.inference.adapters import qwen_image
+from image_studio.inference.common import GenerationCancelled
 from image_studio.schemas import ErrorCode, ProfileId
 from tests.unit.test_hub_compat_client import _api_with_files
 from tests.unit.test_snapshot_validation import _complete_files, _sharded, _write

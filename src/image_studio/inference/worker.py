@@ -22,7 +22,9 @@ import os
 import sys
 from typing import Any
 
-from image_studio.inference import adapters, z_image
+from image_studio.inference import adapters
+from image_studio.inference.adapters import z_image
+from image_studio.inference.common import dependency_versions
 from image_studio.inference.gpus import normalize_gpu_uuid
 from image_studio.inference.protocol import (
     CmdCancel,
@@ -163,7 +165,7 @@ def worker_main(launch: WorkerLaunch, cmd_conn, event_q) -> None:  # type: ignor
                 device_name=device_name,
                 device_uuid=device_uuid,
                 uuid_verified=uuid_verified,
-                versions=z_image.dependency_versions(),
+                versions=dependency_versions(),
             )
         )
 
@@ -273,7 +275,7 @@ def _generate_one_image(
     the pipeline call.
     """
 
-    from image_studio.inference.z_image import GenerationCancelled
+    from image_studio.inference.common import GenerationCancelled
 
     def on_step(step_index: int) -> None:
         cancel_requested, shutdown_requested = _drain_pending_commands(cmd_conn, task.run_id)

@@ -16,8 +16,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from image_studio.inference import z_image
-from image_studio.inference.z_image import GenerationCancelled, ZImageAdapter
+from image_studio.inference import common
+from image_studio.inference.adapters.z_image import ZImageAdapter
+from image_studio.inference.common import GenerationCancelled
 from image_studio.schemas import ProfileId
 
 
@@ -219,11 +220,11 @@ def test_cancellation_raises_from_step_boundary(fake_torch, fake_diffusers):
 
 def test_encode_png_validates_dimensions():
     with pytest.raises(ValueError, match="expected"):
-        z_image.encode_png(FakeImage(64, 128), 256, 256)
+        common.encode_png(FakeImage(64, 128), 256, 256)
 
     buffer = io.BytesIO()
     FakeImage(8, 8).save(buffer)
-    assert z_image.encode_png(FakeImage(8, 8), 8, 8) == buffer.getvalue()
+    assert common.encode_png(FakeImage(8, 8), 8, 8) == buffer.getvalue()
 
 
 def test_fresh_generator_per_image(fake_torch, fake_diffusers):

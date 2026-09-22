@@ -2,11 +2,11 @@
 
 from typing import Any
 
-from image_studio.inference.adapter import PipelineAdapter
-from image_studio.inference.anima import AnimaAdapter
+from image_studio.inference.adapters.anima import AnimaAdapter
+from image_studio.inference.adapters.base import PipelineAdapter
+from image_studio.inference.adapters.qwen_image import QwenImageAdapter
+from image_studio.inference.adapters.z_image import ZImageAdapter
 from image_studio.inference.protocol import WorkerLaunch
-from image_studio.inference.qwen_image import QwenImageAdapter
-from image_studio.inference.z_image import ZImageAdapter
 from image_studio.schemas import ProfileId
 
 

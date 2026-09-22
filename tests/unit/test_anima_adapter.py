@@ -9,8 +9,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from image_studio.inference import adapters, anima, qwen_image, z_image
-from image_studio.inference.z_image import GenerationCancelled
+from image_studio.inference import adapters
+from image_studio.inference.adapters import anima, qwen_image, z_image
+from image_studio.inference.common import GenerationCancelled
 from image_studio.schemas import ProfileId
 from tests.unit.test_inference_adapter import FakeGenerator, FakeImage
 

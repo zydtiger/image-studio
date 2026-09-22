@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from image_studio.hub.anima import RECIPES, model_problems
-from image_studio.inference.adapter import PipelineAdapter
-from image_studio.inference.z_image import StepCallback, encode_png, resolve_torch_dtype
+from image_studio.inference.adapters.base import PipelineAdapter
+from image_studio.inference.common import StepCallback, encode_png, resolve_torch_dtype
 from image_studio.schemas import ModelSource, ProfileId
 
 

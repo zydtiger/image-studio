@@ -14,8 +14,8 @@ def main(root: Path):
     from diffusers import AnimaTextConditioner, ClassifierFreeGuidance, CosmosTransformer3DModel
     from diffusers.modular_pipelines.modular_pipeline import BlockState
 
-    from image_studio.inference.anima import load_checkpoint_models, make_pipeline
-    from image_studio.inference.z_image import GenerationCancelled
+    from image_studio.inference.adapters.anima import load_checkpoint_models, make_pipeline
+    from image_studio.inference.common import GenerationCancelled
 
     # Independent inverse mapping produces original-format synthetic weights.
     inverse = (
