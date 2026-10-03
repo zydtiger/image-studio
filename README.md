@@ -17,6 +17,8 @@ Image generation runs on your own NVIDIA GPU.
   with PyTorch's CUDA 13.0 build. Check that `nvidia-smi` can see your GPU.
 - Git, Python 3.12, uv, Node.js 26.10.0 (also pinned in `.node-version`),
   pnpm 12.4.2, and just.
+- A C/C++ compiler and development headers for Triton's runtime compilation
+  (for example, `build-essential` on Debian/Ubuntu). The Podman image includes these.
 - Disk space for the model downloads and generated images.
 
 If Node.js is installed but pnpm is missing, install the pinned version:

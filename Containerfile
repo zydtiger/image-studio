@@ -17,8 +17,9 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
     HOME=/home/app
 
+# Triton builds native extensions during inference, so keep the toolchain at runtime.
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends git libgomp1 \
+    && apt-get install --yes --no-install-recommends build-essential git libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 1000 app
 RUN pip install --no-cache-dir uv==0.10.10
