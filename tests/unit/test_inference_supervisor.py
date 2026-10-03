@@ -376,18 +376,19 @@ def test_sink_rejecting_image_fails_run_and_stops_remaining_images(tmp_path):
         assert terminal.completed_count == 0
         assert "run_completed" not in sink.names
 
-        records = read_trace(trace)
+        # The failure reaches the sink before the worker processes the nack.
+        # A follow-up run on the same worker confirms that processing finished.
+        runtime.submit(make_spec("run-2", count=1, steps=2))
+        sink.wait_terminal("run-2")
+        states = [e.state for e in sink.of("worker_state_changed")]
+        assert states.count(WorkerState.LOADING) == 1
+
+        records = [record for record in read_trace(trace) if record.get("run_id") == "run-1"]
         starts = [r for r in records if r["event"] == "image_start"]
         assert [r["index"] for r in starts] == [1], (
             "the worker must not continue to the next image after a nack"
         )
         assert any(r["event"] == "abort_nack" for r in records)
-
-        # The worker stayed healthy: a follow-up run reuses it.
-        runtime.submit(make_spec("run-2", count=1, steps=2))
-        sink.wait_terminal("run-2")
-        states = [e.state for e in sink.of("worker_state_changed")]
-        assert states.count(WorkerState.LOADING) == 1
     finally:
         runtime.shutdown()
 

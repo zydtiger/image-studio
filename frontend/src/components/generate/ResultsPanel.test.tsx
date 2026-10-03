@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,6 +12,8 @@ import type { RunDetail, RunSummary } from "../../api/types";
 
 const generationsApi = vi.hoisted(() => ({
   getRun: vi.fn(),
+  setFavorite: vi.fn(),
+  trashRun: vi.fn(),
 }));
 
 vi.mock("../../api/generations", () => ({
@@ -13,8 +21,6 @@ vi.mock("../../api/generations", () => ({
   listRuns: vi.fn(),
   submitGeneration: vi.fn(),
   cancelRun: vi.fn(),
-  setFavorite: vi.fn(),
-  trashRun: vi.fn(),
   restoreRun: vi.fn(),
   getQueue: vi.fn(),
   resumeQueue: vi.fn(),
@@ -23,6 +29,10 @@ vi.mock("../../api/generations", () => ({
   thumbnailUrl: (runId: string, artifactId: string) =>
     `/api/generations/${runId}/artifacts/${artifactId}/thumbnail`,
   metadataUrl: (runId: string) => `/api/generations/${runId}/metadata`,
+}));
+
+vi.mock("../../state/toast/context", () => ({
+  useToast: () => ({ pushToast: vi.fn() }),
 }));
 
 import { ResultsPanel, type ModelRunsView } from "./ResultsPanel";
@@ -63,9 +73,42 @@ function run(overrides: Partial<RunDetail>): RunDetail {
 
 beforeEach(() => {
   generationsApi.getRun.mockReset();
+  generationsApi.setFavorite.mockReset();
+  generationsApi.trashRun.mockReset();
 });
 
 describe("ResultsPanel", () => {
+  it("keeps a saved favorite when an earlier polling read arrives late", async () => {
+    let resolveRead!: (detail: RunDetail) => void;
+    generationsApi.getRun
+      .mockResolvedValueOnce(run({}))
+      .mockImplementationOnce(
+        () =>
+          new Promise<RunDetail>((resolve) => {
+            resolveRead = resolve;
+          }),
+      )
+      .mockResolvedValue(run({ favorite: true }));
+    generationsApi.setFavorite.mockResolvedValue({
+      ...run({}),
+      favorite: true,
+    });
+    render(
+      <MemoryRouter>
+        <ResultsPanel runId="run-1234abcdef" onClear={vi.fn()} />
+      </MemoryRouter>,
+    );
+    await waitFor(
+      () => expect(generationsApi.getRun).toHaveBeenCalledTimes(2),
+      { timeout: 2000 },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Mark favorite" }));
+    await screen.findByRole("button", { name: "Remove favorite" });
+    await act(async () => resolveRead(run({ favorite: false })));
+    expect(
+      screen.getByRole("button", { name: "Remove favorite" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
   it("renders the empty state before any run is followed", () => {
     render(<ResultsPanel runId={null} onClear={vi.fn()} />);
 

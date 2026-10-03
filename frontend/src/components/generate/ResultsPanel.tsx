@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
-import { getRun, metadataUrl, thumbnailUrl } from "../../api/generations";
+import {
+  getRun,
+  metadataUrl,
+  thumbnailUrl,
+  setFavorite,
+  trashRun,
+} from "../../api/generations";
+import { errorMessage } from "../../api/client";
+import { useToast } from "../../state/toast/context";
+import { RunActions } from "../history/RunActions";
 import type { ArtifactView, RunDetail, RunSummary } from "../../api/types";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -116,6 +125,7 @@ export function ResultsPanel({
   onRetryModelRuns,
   onLoadMoreModelRuns,
   onRunSettled,
+  onRunChanged,
 }: {
   runId: string | null;
   onClear: () => void;
@@ -135,7 +145,9 @@ export function ResultsPanel({
    * model's run list precisely when generation finishes.
    */
   onRunSettled?: (run: RunDetail) => void;
+  onRunChanged?: (run: RunSummary) => void;
 }) {
+  const toast = useToast();
   const [record, setRecord] = useState<{
     runId: string;
     run?: RunDetail;
@@ -146,6 +158,7 @@ export function ResultsPanel({
     artifactId: string;
   } | null>(null);
   const [appliedUpdateSeq, setAppliedUpdateSeq] = useState(0);
+  const favoriteEditVersion = useRef(0);
   // The latest selected run id, so a straggler read for a previous run
   // (resolved just after its abort raced with completion) can never
   // clobber the current selection's record.
@@ -200,6 +213,7 @@ export function ResultsPanel({
 
   usePolling(
     async (signal) => {
+      const editVersion = favoriteEditVersion.current;
       const detail = await getRun(runId as string, signal);
       if (selectedRunIdRef.current !== runId) {
         return; // a straggler read for a previously selected run
@@ -216,7 +230,15 @@ export function ResultsPanel({
         ) {
           return current;
         }
-        return { runId: runId as string, run: detail };
+        return {
+          runId: runId as string,
+          run:
+            current?.runId === runId &&
+            current.run !== undefined &&
+            editVersion !== favoriteEditVersion.current
+              ? { ...detail, favorite: current.run.favorite }
+              : detail,
+        };
       });
     },
     {
@@ -262,6 +284,36 @@ export function ResultsPanel({
     modelRunsError !== undefined;
   const hasSelectableRuns = (modelRuns?.runs.length ?? 0) > 0;
 
+  const changeRun = async (action: () => Promise<RunSummary>) => {
+    try {
+      const updated = await action();
+      if (selectedRunIdRef.current === updated.run_id)
+        favoriteEditVersion.current += 1;
+      setRecord((current) =>
+        current?.runId === updated.run_id && current.run !== undefined
+          ? {
+              ...current,
+              run: {
+                ...current.run,
+                favorite: updated.favorite,
+                trashed: updated.trashed,
+              },
+            }
+          : current,
+      );
+      onRunChanged?.(updated);
+      if (updated.trashed) {
+        if (selectedRunIdRef.current === updated.run_id) onClear();
+        toast.pushToast({
+          kind: "success",
+          message: "Run moved to Trash. Restore it from History.",
+        });
+      }
+    } catch (error) {
+      toast.pushToast({ kind: "error", message: errorMessage(error) });
+    }
+  };
+
   return (
     <section className="panel results-panel" aria-label="Run results">
       <header className="panel__header">
@@ -275,6 +327,15 @@ export function ResultsPanel({
         </h2>
         {runId !== null ? (
           <div className="panel__header-actions">
+            {run !== undefined ? (
+              <RunActions
+                run={run}
+                onToggleFavorite={(favorite) =>
+                  changeRun(() => setFavorite(run.run_id, favorite))
+                }
+                onTrash={() => changeRun(() => trashRun(run.run_id))}
+              />
+            ) : null}
             <a
               className="button button--secondary button--sm"
               href={metadataUrl(runId)}
@@ -322,11 +383,24 @@ export function ResultsPanel({
                 aria-label="Recent runs of this model"
               >
                 {modelRuns.runs.map((summary) => (
-                  <li key={summary.run_id} className="model-runs__item">
+                  <li
+                    key={summary.run_id}
+                    className={cx(
+                      "model-runs__item",
+                      summary.run_id === runId && "model-runs__item--selected",
+                    )}
+                  >
                     <ModelRunChip
                       run={summary}
                       selected={summary.run_id === runId}
                       onSelect={() => onSelectRun?.(summary.run_id)}
+                    />
+                    <RunActions
+                      run={summary}
+                      onToggleFavorite={(favorite) =>
+                        changeRun(() => setFavorite(summary.run_id, favorite))
+                      }
+                      onTrash={() => changeRun(() => trashRun(summary.run_id))}
                     />
                   </li>
                 ))}
@@ -480,8 +554,8 @@ function RunDetailBody({
       )}
 
       <p className="results-footer">
-        <Link to="/history">Open History</Link> for all runs, favorites, and
-        image downloads.
+        <Link to="/history">Open History</Link> for all runs and to restore
+        Trash.
       </p>
 
       {openArtifact !== undefined ? (

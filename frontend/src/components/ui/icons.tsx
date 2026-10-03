@@ -65,3 +65,23 @@ export function StarIcon({
     </svg>
   );
 }
+
+export function TrashIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      width="1em"
+      height="1em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+      {...props}
+    >
+      <path d="M3.5 5.5h13M7.5 5.5V3h5v2.5M5 5.5l.8 11.5h8.4L15 5.5M8 8.5v5M12 8.5v5" />
+    </svg>
+  );
+}

@@ -10,6 +10,7 @@ export interface ApiQueryResult<T> {
 interface RunRecord<T> {
   /** Token of the request run this record belongs to. */
   token: string;
+  depsKey: string;
   result?: T;
   error?: unknown;
 }
@@ -26,18 +27,22 @@ interface RunRecord<T> {
 export function useApiQuery<T>(
   query: (signal: AbortSignal) => Promise<T>,
   deps: readonly unknown[],
-  options: { enabled?: boolean } = {},
+  options: { enabled?: boolean; keepDataOnRefetch?: boolean } = {},
 ): ApiQueryResult<T> {
-  const { enabled = true } = options;
+  const { enabled = true, keepDataOnRefetch = false } = options;
   const [version, setVersion] = useState(0);
-  const [record, setRecord] = useState<RunRecord<T>>({ token: "" });
+  const [record, setRecord] = useState<RunRecord<T>>({
+    token: "",
+    depsKey: "",
+  });
   const queryRef = useRef(query);
 
   useEffect(() => {
     queryRef.current = query;
   });
 
-  const token = `${version}\u0000${JSON.stringify(deps)}`;
+  const depsKey = JSON.stringify(deps);
+  const token = `${version}\u0000${depsKey}`;
   const stale = record.token !== token;
 
   useEffect(() => {
@@ -46,11 +51,11 @@ export function useApiQuery<T>(
     let active = true;
     queryRef.current(controller.signal).then(
       (result) => {
-        if (active) setRecord({ token, result });
+        if (active) setRecord({ token, depsKey, result });
       },
       (cause: unknown) => {
         if (active && !controller.signal.aborted) {
-          setRecord({ token, error: cause });
+          setRecord({ token, depsKey, error: cause });
         }
       },
     );
@@ -58,16 +63,19 @@ export function useApiQuery<T>(
       active = false;
       controller.abort();
     };
-  }, [enabled, token]);
+  }, [enabled, token, depsKey]);
 
   const refetch = useCallback(() => {
     setVersion((current) => current + 1);
   }, []);
 
   return {
-    data: stale ? undefined : record.result,
-    // While a fresh run is in flight the last record is stale; show the
-    // loading state instead of stale data (no stale-while-revalidate).
+    // Opt-in refreshes keep content mounted; changed query dependencies
+    // still clear it so results from another filter or identity are hidden.
+    data:
+      stale && !(keepDataOnRefetch && record.depsKey === depsKey)
+        ? undefined
+        : record.result,
     loading: enabled && stale,
     error: stale ? undefined : record.error,
     refetch,

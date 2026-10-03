@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { RunSummary } from "../../api/types";
 import { thumbnailUrl } from "../../api/generations";
 import { Badge } from "../ui/Badge";
-import { StarIcon } from "../ui/icons";
+import { RunActions } from "./RunActions";
 import { formatRelativeTime } from "../../lib/format";
 import { runStatusTone } from "../../lib/statusTone";
 import { runStatusLabel } from "../../lib/statusTone";
@@ -16,10 +16,12 @@ export function RunCard({
   run,
   onOpen,
   onToggleFavorite,
+  onTrash,
 }: {
   run: RunSummary;
   onOpen: () => void;
-  onToggleFavorite: (favorite: boolean) => void;
+  onToggleFavorite: (favorite: boolean) => void | Promise<void>;
+  onTrash?: () => void | Promise<void>;
 }) {
   const [broken, setBroken] = useState(false);
   const hasPreview =
@@ -54,20 +56,11 @@ export function RunCard({
           <Badge tone={runStatusTone(run.status)}>
             {runStatusLabel(run.status)}
           </Badge>
-          <button
-            type="button"
-            className={
-              run.favorite
-                ? "icon-button icon-button--sm run-card__star run-card__star--on"
-                : "icon-button icon-button--sm run-card__star"
-            }
-            aria-pressed={run.favorite}
-            aria-label={run.favorite ? "Remove favorite" : "Mark favorite"}
-            title={run.favorite ? "Remove favorite" : "Mark favorite"}
-            onClick={() => onToggleFavorite(!run.favorite)}
-          >
-            <StarIcon filled={run.favorite} />
-          </button>
+          <RunActions
+            run={run}
+            onToggleFavorite={onToggleFavorite}
+            onTrash={onTrash}
+          />
         </div>
         <p className="run-card__prompt" title={run.prompt}>
           {run.prompt}

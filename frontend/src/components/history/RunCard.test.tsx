@@ -69,4 +69,20 @@ describe("RunCard", () => {
     fireEvent.click(star);
     expect(onToggleFavorite).toHaveBeenCalledWith(false);
   });
+
+  it("disables Trash for active runs and omits it for trashed runs", () => {
+    const onTrash = vi.fn();
+    const props = { onOpen: vi.fn(), onToggleFavorite: vi.fn(), onTrash };
+    const { rerender } = render(
+      <RunCard run={summary({ status: "running" })} {...props} />,
+    );
+    const trash = screen.getByRole("button", { name: "Move run to Trash" });
+    expect(trash).toBeDisabled();
+    fireEvent.click(trash);
+    expect(onTrash).not.toHaveBeenCalled();
+    rerender(<RunCard run={summary({ trashed: true })} {...props} />);
+    expect(
+      screen.queryByRole("button", { name: "Move run to Trash" }),
+    ).not.toBeInTheDocument();
+  });
 });

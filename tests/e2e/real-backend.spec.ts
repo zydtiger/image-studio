@@ -102,14 +102,16 @@ test("full flow: download+register, generate twice on one page, history, downloa
     await expect
       .poll(
         async () => {
-          const images = await page.evaluate((selector) =>
-            Array.from(
-              document.querySelectorAll<HTMLImageElement>(selector),
-            ).map((img) => ({
-              complete: img.complete,
-              naturalWidth: img.naturalWidth,
-            })),
-          ".image-tile__button img");
+          const images = await page.evaluate(
+            (selector) =>
+              Array.from(
+                document.querySelectorAll<HTMLImageElement>(selector),
+              ).map((img) => ({
+                complete: img.complete,
+                naturalWidth: img.naturalWidth,
+              })),
+            ".image-tile__button img",
+          );
           return (
             images.length === expectedCount &&
             images.every((img) => img.complete && img.naturalWidth > 0)
@@ -229,20 +231,17 @@ test("full flow: download+register, generate twice on one page, history, downloa
   const metadataDownloadInfo = await metadataDownload;
   expect(metadataDownloadInfo.suggestedFilename()).toMatch(/metadata\.json$/);
 
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Move to Trash" })
-    .first()
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  await card
+    .getByRole("button", { name: "Move run to Trash", exact: true })
     .click();
   await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Move to Trash" })
-    .last()
+    .getByRole("dialog", { name: "Move run to Trash?" })
+    .getByRole("button", { name: "Move to Trash", exact: true })
     .click();
-  await page.getByRole("button", { name: "Close dialog" }).first().click();
   await expect(card).toBeHidden({ timeout: 10_000 });
 
-  await page.getByRole("button", { name: "Trash" }).click();
+  await page.getByRole("button", { name: "Trash", exact: true }).click();
   const trashedCard = page
     .locator(".run-card")
     .filter({ hasText: "integration beta, second same-page run" });
