@@ -18,7 +18,11 @@ Use four English-language pages:
   gallery lists the selected model's runs newest first and only those that
   already saved a completed image (completed, partial, or active with saved
   images). The Queue panel continues to show pending and running tasks. The
-  followed run's detail retains progress, cancellation, and failure feedback
+  Results toolbar and run thumbnails provide Favorite and recoverable Trash
+  actions. History cards provide the same shortcuts. Actions apply to the entire
+  run, including all its images; Trash requires confirmation and is disabled
+  for active runs. Trashed runs can be restored from History.
+  The followed run's detail retains progress, cancellation, and failure feedback
   even when it has no images.
 - **Models:** Discover searches Hugging Face and shows model cards, licenses,
   revisions, access restrictions, and compatibility. My Models contains

@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { useEffect } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -185,6 +192,38 @@ describe("HistoryPage", () => {
     await waitFor(() =>
       expect(generationsApi.setFavorite).toHaveBeenCalledWith("r1", true),
     );
+  });
+
+  it("keeps drawer content and focus while a favorite refresh is pending", async () => {
+    let resolveRefresh!: (run: RunDetail) => void;
+    generationsApi.getRun
+      .mockResolvedValueOnce(detail({ run_id: "r1" }))
+      .mockImplementationOnce(
+        () =>
+          new Promise<RunDetail>((resolve) => {
+            resolveRefresh = resolve;
+          }),
+      );
+    generationsApi.setFavorite.mockResolvedValue(summary({ favorite: true }));
+    renderHistory([summary({ run_id: "r1" })]);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Open run from/ }),
+    );
+    const drawer = within(screen.getByRole("dialog"));
+    const star = await drawer.findByRole("button", { name: "Mark favorite" });
+    star.focus();
+    fireEvent.click(star);
+
+    await waitFor(() => expect(generationsApi.getRun).toHaveBeenCalledTimes(2));
+    expect(drawer.getByRole("button", { name: "Mark favorite" })).toBe(star);
+    expect(drawer.getByText("Initial seed")).toBeInTheDocument();
+    expect(star).toHaveFocus();
+
+    await act(async () =>
+      resolveRefresh(detail({ run_id: "r1", favorite: true })),
+    );
+    expect(drawer.getByRole("button", { name: "Remove favorite" })).toBe(star);
+    expect(star).toHaveFocus();
   });
 
   it("requests the trash view explicitly", async () => {

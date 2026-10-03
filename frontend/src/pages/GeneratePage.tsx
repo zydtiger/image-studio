@@ -615,6 +615,28 @@ export default function GeneratePage() {
               })
             }
             onRunSettled={() => setModelRunsRefresh((current) => current + 1)}
+            onRunChanged={(updated) => {
+              if (selectedRepoIdRef.current !== updated.repo_id) return;
+              setModelRuns((current) => {
+                if (current?.repoId !== updated.repo_id) return current;
+                const present = current.runs.some(
+                  (entry) => entry.run_id === updated.run_id,
+                );
+                return {
+                  ...current,
+                  runs: updated.trashed
+                    ? current.runs.filter(
+                        (entry) => entry.run_id !== updated.run_id,
+                      )
+                    : current.runs.map((entry) =>
+                        entry.run_id === updated.run_id ? updated : entry,
+                      ),
+                  total: current.total - (updated.trashed && present ? 1 : 0),
+                };
+              });
+              setModelRunsMore(null);
+              setModelRunsRefresh((current) => current + 1);
+            }}
           />
         </div>
       </div>

@@ -284,6 +284,26 @@
 
 .model-runs__item {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.model-runs__item:hover {
+  border-color: var(--color-border-strong);
+}
+
+.model-runs__item--selected {
+  border-color: var(--color-accent-border);
+  background: var(--color-accent-soft);
+}
+
+.model-runs__item > .run-actions {
+  justify-content: flex-end;
+  margin-top: var(--space-1);
 }
 
 .model-runs__more {
@@ -295,8 +315,9 @@
   width: 100%;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--space-1);
-  border: 1px solid var(--color-border);
+  flex: 1;
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-md);
   background: var(--color-bg);
   font: inherit;
@@ -756,8 +777,18 @@ span.model-card__repo {
   gap: var(--space-2);
 }
 
-.run-card__star--on {
+.run-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.run-actions__favorite--on {
   color: #e67700;
+}
+
+.run-actions__trash:hover {
+  color: var(--color-danger);
 }
 
 .run-card__prompt {

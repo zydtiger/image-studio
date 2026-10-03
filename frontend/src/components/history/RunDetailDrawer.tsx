@@ -59,20 +59,18 @@ export function RunDetailDrawer({
   onReuse: (payload: ReturnType<typeof buildReusePayload>) => void;
 }) {
   const toast = useToast();
-  const [version, setVersion] = useState(0);
   const [confirmTrash, setConfirmTrash] = useState(false);
   const [openArtifact, setOpenArtifact] = useState<ArtifactView>();
 
-  const runQuery = useApiQuery(
-    (signal) => getRun(runId, signal),
-    [runId, version],
-  );
+  const runQuery = useApiQuery((signal) => getRun(runId, signal), [runId], {
+    keepDataOnRefetch: true,
+  });
   const run = runQuery.data;
 
   const act = async (action: () => Promise<unknown>, message: string) => {
     try {
       await action();
-      setVersion((current) => current + 1);
+      runQuery.refetch();
       onChanged();
       toast.pushToast({ kind: "success", message });
     } catch (error) {

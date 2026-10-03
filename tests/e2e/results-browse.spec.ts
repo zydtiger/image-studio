@@ -16,6 +16,103 @@ test.beforeEach(async ({ fakeApi }) => {
   });
 });
 
+test("favorites and trashes runs directly from Results without changing another selection", async ({
+  page,
+  fakeApi,
+}) => {
+  const older = fakeApi!.seedRun({
+    prompt: "older quick-action run",
+    imageCount: 2,
+  });
+  const newest = fakeApi!.seedRun({
+    prompt: "selected quick-action run",
+    imageCount: 1,
+  });
+  await page.goto("/#/generate");
+  const results = page.getByLabel("Run results");
+  const olderCard = results
+    .locator(".model-runs__item")
+    .filter({ has: page.getByTitle("older quick-action run") });
+  const newestCard = results
+    .locator(".model-runs__item")
+    .filter({ has: page.getByTitle("selected quick-action run") });
+  const header = results.locator(".panel__header");
+  await expect(
+    header.getByRole("button", { name: "Mark favorite" }),
+  ).toBeVisible();
+  await header.getByRole("button", { name: "Mark favorite" }).click();
+  await expect(
+    newestCard.getByRole("button", { name: "Remove favorite" }),
+  ).toBeVisible();
+  await olderCard.getByRole("button", { name: "Mark favorite" }).click();
+  await expect(
+    olderCard.getByRole("button", { name: "Remove favorite" }),
+  ).toBeVisible();
+  await expect(
+    results.getByText(`run ${newest.run_id.slice(0, 8)}`).first(),
+  ).toBeVisible();
+
+  await olderCard.getByRole("button", { name: "Move run to Trash" }).click();
+  const confirm = page.getByRole("dialog", { name: "Move run to Trash?" });
+  await expect(confirm).toContainText("entire run (2 images)");
+  await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(olderCard).toBeVisible();
+  await olderCard.getByRole("button", { name: "Move run to Trash" }).click();
+  await confirm
+    .getByRole("button", { name: "Move to Trash", exact: true })
+    .click();
+  await expect(olderCard).toHaveCount(0);
+  await expect(
+    results.getByText(`run ${newest.run_id.slice(0, 8)}`).first(),
+  ).toBeVisible();
+  await header.getByRole("button", { name: "Move run to Trash" }).click();
+  await confirm
+    .getByRole("button", { name: "Move to Trash", exact: true })
+    .click();
+  await expect(newestCard).toHaveCount(0);
+  await expect(
+    header.getByRole("button", { name: "Clear", exact: true }),
+  ).toHaveCount(0);
+
+  await page.goto("/#/history");
+  await page.getByRole("button", { name: "Trash", exact: true }).click();
+  await expect(page.getByText(older.prompt, { exact: true })).toBeVisible();
+  await expect(page.getByText(newest.prompt, { exact: true })).toBeVisible();
+});
+
+test("keeps a run visible when a quick Trash request fails", async ({
+  page,
+  fakeApi,
+}) => {
+  const run = fakeApi!.seedRun({ prompt: "cannot trash this run" });
+  await page.route(`**/api/generations/${run.run_id}/trash`, (route) =>
+    route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: { code: "conflict", message: "Run changed; try again." },
+      }),
+    }),
+  );
+  await page.goto("/#/generate");
+  const results = page.getByLabel("Run results");
+  const card = results
+    .locator(".model-runs__item")
+    .filter({ has: page.getByTitle(run.prompt) });
+  await card.getByRole("button", { name: "Move run to Trash" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Move to Trash", exact: true })
+    .click();
+  await expect(
+    page.getByText("Run changed; try again.", { exact: true }),
+  ).toBeVisible();
+  await expect(card).toBeVisible();
+  await expect(
+    results.getByText(`run ${run.run_id.slice(0, 8)}`).first(),
+  ).toBeVisible();
+});
+
 test("keeps a model's recent results browsable across reloads", async ({
   page,
   fakeApi,
@@ -340,9 +437,7 @@ test("cancelling an unfollowed run updates its older-page chip", async ({
     .getByRole("listitem")
     .filter({ hasText: "old cancellation" });
   await expect(activeRow).toBeVisible({ timeout: 10_000 });
-  await activeRow
-    .getByRole("button", { name: "Cancel", exact: true })
-    .click();
+  await activeRow.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(deepChip).toContainText("Partial", { timeout: 10_000 });
 });
 
@@ -365,9 +460,7 @@ test("a completion hidden from runtime polls still updates the run list", async 
   });
   await page.goto("/#/generate");
   await page.getByLabel("Prompt", { exact: true }).fill("quick completion");
-  await page
-    .getByRole("button", { name: "Generate", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Generate", exact: true }).click();
 
   fakeApi!.startNextRun();
   fakeApi!.finishCurrentRun();
@@ -416,9 +509,7 @@ test("a late submission response respects a newer model selection", async ({
   await page
     .getByLabel("Prompt", { exact: true })
     .fill("delayed base submission");
-  await page
-    .getByRole("button", { name: "Generate", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Generate", exact: true }).click();
   await expect.poll(() => posted).toBe(true);
 
   // While the POST is still in flight, the user switches models and the

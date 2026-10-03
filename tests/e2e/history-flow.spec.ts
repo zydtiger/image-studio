@@ -99,6 +99,79 @@ test("toggles favorites from the grid", async ({ page }) => {
   ).toBeVisible({ timeout: 5_000 });
 });
 
+test("moves a run to recoverable Trash directly from its History card", async ({
+  page,
+}) => {
+  const card = page
+    .locator(".run-card")
+    .filter({ hasText: "a quiet harbor at dawn" });
+  await card.getByRole("button", { name: "Move run to Trash" }).click();
+  const confirm = page.getByRole("dialog", { name: "Move run to Trash?" });
+  await expect(confirm).toContainText("entire run (2 images)");
+  await confirm
+    .getByRole("button", { name: "Move to Trash", exact: true })
+    .click();
+  await expect(card).toHaveCount(0);
+  await page.getByRole("button", { name: "Trash", exact: true }).click();
+  await expect(card).toBeVisible();
+  await expect(
+    card.getByRole("button", { name: "Move run to Trash" }),
+  ).toHaveCount(0);
+  await card.getByRole("button", { name: /Open run from/ }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Restore", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  await expect(card).toBeVisible();
+});
+
+test("keeps the scrolled history grid and focus while saving a favorite", async ({
+  page,
+  fakeApi,
+}) => {
+  for (let index = 0; index < 18; index += 1) {
+    fakeApi!.seedRun({ prompt: `scroll test run ${index}` });
+  }
+  await page.reload();
+  await expect(page.locator(".run-card")).toHaveCount(23);
+  const card = page.locator(".run-card").last();
+  const star = card.getByRole("button", { name: "Mark favorite" });
+  await star.scrollIntoViewIfNeeded();
+  const scrollBefore = await page.evaluate(() => window.scrollY);
+  expect(scrollBefore).toBeGreaterThan(500);
+
+  let releaseRefresh!: () => void;
+  const refreshGate = new Promise<void>((resolve) => {
+    releaseRefresh = resolve;
+  });
+  let refreshStarted!: () => void;
+  const refreshing = new Promise<void>((resolve) => {
+    refreshStarted = resolve;
+  });
+  await page.route("**/api/generations?*", async (route) => {
+    refreshStarted();
+    await refreshGate;
+    await route.fallback();
+  });
+
+  await star.click();
+  await refreshing;
+  try {
+    await expect(page.locator(".run-card")).toHaveCount(23);
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+    await expect(star).toBeFocused();
+    await expect(page).toHaveURL(/#\/history$/);
+  } finally {
+    releaseRefresh();
+  }
+  await expect(
+    card.getByRole("button", { name: "Remove favorite" }),
+  ).toBeFocused();
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+});
+
 test("trashes and restores a run", async ({ page }) => {
   const card = page.locator(".run-card").filter({
     hasText: "a quiet harbor at dawn",
@@ -123,7 +196,7 @@ test("trashes and restores a run", async ({ page }) => {
     page.locator(".run-card").filter({ hasText: "a quiet harbor at dawn" }),
   ).toBeHidden({ timeout: 5_000 });
 
-  await page.getByRole("button", { name: "Trash" }).click();
+  await page.getByRole("button", { name: "Trash", exact: true }).click();
   await expect(page.getByText("a quiet harbor at dawn")).toBeVisible({
     timeout: 5_000,
   });
@@ -178,7 +251,7 @@ test("hides cancelled runs without images in the default view only", async ({
   });
 
   // The Trash view remains fully inspectable, cancellations included.
-  await page.getByRole("button", { name: "Trash" }).click();
+  await page.getByRole("button", { name: "Trash", exact: true }).click();
   await expect(page.getByText("a cancelled discard")).toBeVisible({
     timeout: 5_000,
   });

@@ -2,7 +2,12 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { listRegistrations } from "../api/models";
-import { listRuns, setFavorite, type RunListParams } from "../api/generations";
+import {
+  listRuns,
+  setFavorite,
+  trashRun,
+  type RunListParams,
+} from "../api/generations";
 import type { RunStatus } from "../api/types";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -72,6 +77,7 @@ export default function HistoryPage() {
   const runsQuery = useApiQuery(
     (signal) => listRuns(params, signal),
     [view, query, status, model, favoriteOnly, page],
+    { keepDataOnRefetch: true },
   );
   const runs = runsQuery.data?.runs ?? [];
   const total = runsQuery.data?.total ?? 0;
@@ -82,6 +88,19 @@ export default function HistoryPage() {
     try {
       await setFavorite(runId, favorite);
       runsQuery.refetch();
+    } catch (error) {
+      toast.pushToast({ kind: "error", message: errorMessage(error) });
+    }
+  };
+
+  const moveToTrash = async (runId: string) => {
+    try {
+      await trashRun(runId);
+      runsQuery.refetch();
+      toast.pushToast({
+        kind: "success",
+        message: "Run moved to Trash. Restore it from History.",
+      });
     } catch (error) {
       toast.pushToast({ kind: "error", message: errorMessage(error) });
     }
@@ -221,8 +240,9 @@ export default function HistoryPage() {
                 key={run.run_id}
                 run={run}
                 onOpen={() => setOpenRunId(run.run_id)}
+                onTrash={() => moveToTrash(run.run_id)}
                 onToggleFavorite={(favorite) =>
-                  void toggleFavorite(run.run_id, favorite)
+                  toggleFavorite(run.run_id, favorite)
                 }
               />
             ))}

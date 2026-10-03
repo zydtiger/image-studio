@@ -69,4 +69,35 @@ describe("useApiQuery", () => {
     unmount();
     expect(seen?.aborted).toBe(true);
   });
+
+  it("keeps data during an opted-in refetch but clears it when dependencies change", async () => {
+    let resolveRefresh!: (value: string) => void;
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce("original")
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveRefresh = resolve;
+          }),
+      )
+      .mockResolvedValueOnce("filtered");
+    const { result, rerender } = renderHook(
+      ({ filter }: { filter: string }) =>
+        useApiQuery(query, [filter], { keepDataOnRefetch: true }),
+      { initialProps: { filter: "all" } },
+    );
+
+    await waitFor(() => expect(result.current.data).toBe("original"));
+    act(() => result.current.refetch());
+    expect(result.current.loading).toBe(true);
+    expect(result.current.data).toBe("original");
+    await act(async () => resolveRefresh("updated"));
+    expect(result.current.data).toBe("updated");
+
+    rerender({ filter: "favorites" });
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.loading).toBe(true);
+    await waitFor(() => expect(result.current.data).toBe("filtered"));
+  });
 });
