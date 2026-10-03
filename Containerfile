@@ -1,5 +1,5 @@
 # Keep Node and frontend build dependencies out of the application image.
-FROM docker.io/library/node:24.15.0-bookworm-slim AS frontend
+FROM docker.io/library/node:26.10.0-bookworm-slim AS frontend
 WORKDIR /build/frontend
 RUN npm install --global pnpm@12.4.2
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
