@@ -151,6 +151,14 @@ commit `8b3c707ebd3ec4881f4190cf42931da07eaf3b65` (0.41.0.dev0), which includes
 5.17 or later provides its Qwen3-VL processor and text encoder. Use the locked uv
 environment for inference.
 
+Triton compiles native extensions during inference and requires a C/C++ compiler
+and development headers in the worker's environment. The application image keeps
+`build-essential` installed at runtime. If an older container reports
+`Failed to find C compiler`, rebuild the image and recreate the container from
+it; a compiler installed only on the host is not available inside the container.
+For native execution, install the toolchain and ensure `gcc` or `clang` is on
+`PATH`, or set `CC` to an existing compiler before starting the server.
+
 CPU tests cover pipeline/component compatibility, processor file selection,
 fixed-revision downloads, automatic registration, profile mismatch rejection,
 generation defaults and dimensions, offline loader arguments, per-image seeds,
