@@ -102,6 +102,64 @@ class Generator:
         return self
 
 
+def test_edit_passes_rgba_input_without_strength(torch_stub, tmp_path):
+    path = tmp_path / "input.png"
+    Image.new("RGBA", (48, 64), (1, 2, 3, 40)).save(path)
+
+    def pipeline(**kwargs):
+        assert len(kwargs["image"]) == 1
+        assert kwargs["image"][0].getpixel((0, 0)) == (1, 2, 3, 40)
+        assert "strength" not in kwargs
+        return SimpleNamespace(images=[Image.new("RGBA", (256, 256))])
+
+    qwen_image.QwenImageAdapter().generate_image(
+        pipeline,
+        prompt="edit",
+        negative_prompt=None,
+        width=256,
+        height=256,
+        steps=1,
+        guidance=1,
+        seed=1,
+        on_step=lambda _: None,
+        input_paths=(str(path),),
+    )
+
+
+def test_worker_forwards_input_paths_to_adapter():
+    import queue
+
+    from image_studio.inference.protocol import RunTask
+    from image_studio.inference.worker import _generate_one_image
+
+    task = RunTask(
+        run_id="edit",
+        prompt="edit",
+        negative_prompt=None,
+        width=256,
+        height=256,
+        steps=1,
+        guidance=1,
+        seeds=(1,),
+        artifact_ids=("image-001",),
+        input_paths=("/verified/input.png",),
+    )
+
+    def generate(pipeline, **kwargs):
+        assert kwargs["input_paths"] == task.input_paths
+        return b"png"
+
+    assert _generate_one_image(
+        object(),
+        task,
+        1,
+        1,
+        SimpleNamespace(poll=lambda *_: False),
+        queue.Queue(),
+        SimpleNamespace(generate_image=generate),
+    ) == (False, False, b"png")
+
+
 @pytest.fixture
 def torch_stub(monkeypatch):
     monkeypatch.setitem(

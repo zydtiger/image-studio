@@ -541,6 +541,7 @@ class InferenceSupervisor:
             guidance=spec.guidance,
             seeds=tuple(spec.seeds),
             artifact_ids=tuple(spec.artifact_ids),
+            input_paths=spec.input_paths,
         )
 
     def _replacement_reason(self, spec: FrozenRunSpec) -> str:

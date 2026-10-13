@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { ArtifactView } from "../../api/types";
 import { thumbnailUrl } from "../../api/generations";
 import { Badge } from "../ui/Badge";
+import { EditImageButton } from "./EditImageButton";
 
 /**
  * One image tile from a run: completed images show their lazily generated
@@ -13,10 +14,12 @@ export function ImageTile({
   runId,
   artifact,
   onOpen,
+  editable = false,
 }: {
   runId: string;
   artifact: ArtifactView;
   onOpen?: (artifact: ArtifactView) => void;
+  editable?: boolean;
 }) {
   const [broken, setBroken] = useState(false);
   const openable =
@@ -68,6 +71,9 @@ export function ImageTile({
             {artifact.status}
           </Badge>
         ) : null}
+        {editable && openable && (
+          <EditImageButton runId={runId} artifactId={artifact.artifact_id} />
+        )}
       </figcaption>
     </figure>
   );

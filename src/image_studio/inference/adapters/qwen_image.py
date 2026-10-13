@@ -1,4 +1,4 @@
-"""Offline Qwen-Image-2.1 text-to-image adapter; heavy imports stay worker-only."""
+"""Offline Qwen-Image-2.1 generation/editing adapter; imports stay worker-only."""
 
 from __future__ import annotations
 
@@ -51,14 +51,22 @@ class QwenImageAdapter(PipelineAdapter["QwenImage21Pipeline"]):
         guidance: float,
         seed: int,
         on_step: StepCallback,
+        input_paths: tuple[str, ...] = (),
     ) -> bytes:
         import torch
+        from PIL import Image
+
+        images = []
+        for path in input_paths:
+            with Image.open(path) as source:
+                images.append(source.convert("RGBA"))
 
         def on_step_end(_pipe: Any, step_index: int, _timestep: Any, kwargs: dict) -> dict:
             on_step(step_index)
             return kwargs
 
         result = loaded(
+            **({"image": images} if images else {}),
             prompt=prompt,
             negative_prompt=negative_prompt,
             width=width,

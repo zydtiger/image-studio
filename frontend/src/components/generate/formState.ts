@@ -3,6 +3,8 @@ import type {
   GpuInfo,
   ModelRegistration,
   ProfileSpec,
+  GenerationMode,
+  InputImage,
 } from "../../api/types";
 import type { ReusePayload } from "../../lib/reuse";
 import {
@@ -19,6 +21,8 @@ import {
  */
 
 export interface GenerationFormState {
+  mode: GenerationMode;
+  inputImages: InputImage[];
   registrationId: string;
   gpuUuid: string;
   prompt: string;
@@ -32,6 +36,8 @@ export interface GenerationFormState {
 }
 
 export const EMPTY_FORM: GenerationFormState = {
+  mode: "text-to-image",
+  inputImages: [],
   registrationId: "",
   gpuUuid: "",
   prompt: "",
@@ -46,7 +52,24 @@ export const EMPTY_FORM: GenerationFormState = {
 
 export type FormErrors = Partial<Record<keyof GenerationFormState, string>>;
 
+export function inputDimensions(image: InputImage, multiple: number) {
+  const scale = Math.min(
+    1024 / Math.max(image.width, image.height),
+    Math.max(1, 256 / Math.min(image.width, image.height)),
+  );
+  const align = (value: number) =>
+    String(
+      Math.min(
+        2048,
+        Math.max(256, Math.round((value * scale) / multiple) * multiple),
+      ),
+    );
+  return { width: align(image.width), height: align(image.height) };
+}
+
 export interface ParsedFormValues {
+  mode?: GenerationMode;
+  inputImages?: InputImage[];
   registrationId: string;
   gpuUuid: string;
   prompt: string;
@@ -66,6 +89,12 @@ export function applyProfileDefaults(
 ): GenerationFormState {
   return {
     ...state,
+    mode: spec.generation_modes?.includes("image-edit")
+      ? state.mode
+      : "text-to-image",
+    inputImages: spec.generation_modes?.includes("image-edit")
+      ? state.inputImages
+      : [],
     steps: String(spec.default_steps),
     guidance: spec.guidance_fixed === null ? String(spec.guidance_default) : "",
     width: String(spec.default_width),
@@ -89,6 +118,8 @@ export function applyReuse(
   const notices: string[] = [];
   let next: GenerationFormState = {
     ...state,
+    mode: reuse.mode ?? "text-to-image",
+    inputImages: reuse.inputImages ?? [],
     prompt: reuse.prompt,
     width: String(reuse.width),
     height: String(reuse.height),
@@ -109,6 +140,7 @@ export function applyReuse(
       : undefined);
 
   if (registration === undefined || spec === undefined) {
+    next.registrationId = "";
     notices.push(
       `The model used by this run (${reuse.repoId}) is not registered anymore. Choose a model.`,
     );
@@ -163,6 +195,13 @@ export function validateForm(
   spec: ProfileSpec | undefined,
 ): { values: ParsedFormValues; errors: FormErrors } {
   const errors: FormErrors = {};
+  if (state.mode === "image-edit") {
+    if (!spec?.generation_modes?.includes("image-edit")) {
+      errors.mode = "Select a model that supports image editing.";
+    }
+    if (state.inputImages.length !== 1)
+      errors.inputImages = "Select one input image.";
+  }
 
   if (state.registrationId === "") {
     errors.registrationId = "Select a model.";
@@ -255,6 +294,8 @@ export function validateForm(
 
   return {
     values: {
+      mode: state.mode,
+      inputImages: state.inputImages,
       registrationId: state.registrationId,
       gpuUuid: state.gpuUuid,
       prompt: state.prompt,
@@ -280,6 +321,13 @@ export function buildRequest(
   spec: ProfileSpec,
 ): GenerationRequest {
   return {
+    ...(values.mode === "image-edit"
+      ? {
+          mode: values.mode,
+          input_image_ids:
+            values.inputImages?.map((image) => image.input_id) ?? [],
+        }
+      : {}),
     registration_id: values.registrationId,
     gpu_uuid: values.gpuUuid,
     prompt: values.prompt,

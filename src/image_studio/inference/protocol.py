@@ -109,6 +109,7 @@ class RunTask:
     guidance: float
     seeds: tuple[int, ...]
     artifact_ids: tuple[str, ...]
+    input_paths: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------

@@ -163,7 +163,7 @@ def _execute_run(  # type: ignore[no-untyped-def]
     global _run_ordinal
     _run_ordinal += 1
     ordinal = _run_ordinal
-    trace("run_start", run_id=task.run_id, ordinal=ordinal)
+    trace("run_start", run_id=task.run_id, ordinal=ordinal, input_paths=task.input_paths)
     completed = 0
     if script.crash_on_run == ordinal:
         trace("crash", run_id=task.run_id, ordinal=ordinal)

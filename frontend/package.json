@@ -19,6 +19,7 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
+    "lucide-react": "^1.55.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router": "^8.4.0"

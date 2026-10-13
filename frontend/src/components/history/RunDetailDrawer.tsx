@@ -165,6 +165,9 @@ export function RunDetailDrawer({
           ) : null}
 
           <dl className="detail-list">
+            <Row label="Mode">
+              {run.mode === "image-edit" ? "Image edit" : "Text to image"}
+            </Row>
             <Row label="Prompt">
               <p className="detail-prompt">{run.prompt}</p>
             </Row>
@@ -217,6 +220,20 @@ export function RunDetailDrawer({
             ) : null}
           </dl>
 
+          {run.input_images?.map((image) => (
+            <a
+              key={image.input_id}
+              href={image.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <img
+                className="input-image-preview"
+                src={image.url}
+                alt="Input image"
+              />
+            </a>
+          ))}
           {run.images.length > 0 ? (
             <div className="results-grid results-grid--drawer">
               {run.images.map((artifact) => (
@@ -224,6 +241,7 @@ export function RunDetailDrawer({
                   key={artifact.artifact_id}
                   runId={run.run_id}
                   artifact={artifact}
+                  editable
                   onOpen={setOpenArtifact}
                 />
               ))}

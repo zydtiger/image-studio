@@ -27,6 +27,7 @@ from image_studio.hub.downloads import DownloadEngine
 from image_studio.runtime import RuntimeCoordinator
 from image_studio.storage import database
 from image_studio.storage.artifacts import ArtifactError, ArtifactStore
+from image_studio.storage.inputs import InputStore
 from image_studio.storage.repository import NotFoundError, Repository
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ class AppState:
     settings: Settings
     repository: Repository
     artifacts: ArtifactStore
+    inputs: InputStore
     coordinator: RuntimeCoordinator
     hub: HubStack
     downloads: DownloadEngine
@@ -125,7 +127,9 @@ def create_app(
             trash_dir=settings.trash_dir,
             thumbnails_dir=settings.thumbnails_dir,
         )
-        coordinator = RuntimeCoordinator(repository, artifacts, active_runtime)
+        inputs = InputStore(settings.data_dir / "inputs", repository)
+        inputs.cleanup()
+        coordinator = RuntimeCoordinator(repository, artifacts, active_runtime, inputs=inputs)
         if paused:
             coordinator.mark_queue_paused()
         if interrupted:
@@ -136,6 +140,7 @@ def create_app(
             settings=settings,
             repository=repository,
             artifacts=artifacts,
+            inputs=inputs,
             coordinator=coordinator,
             hub=hub_stack,
             downloads=engine,
@@ -258,13 +263,14 @@ def _install_error_handlers(app: FastAPI) -> None:
 
 
 def _include_routers(app: FastAPI) -> None:
-    from image_studio.api import downloads, generations, history, models, system
+    from image_studio.api import downloads, generations, history, inputs, models, system
 
     app.include_router(system.router)
     app.include_router(models.router)
     app.include_router(downloads.router)
     app.include_router(generations.router)
     app.include_router(history.router)
+    app.include_router(inputs.router)
 
 
 class SPAStaticFiles(StaticFiles):

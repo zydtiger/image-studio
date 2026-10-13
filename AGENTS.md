@@ -35,8 +35,10 @@ worker reuse and Eject verified. Scope verification claims to the evidence in
   Unsloth Qwen-Image-2.1 FP8 is an explicit multi-source recipe on the same
   Qwen pipeline: preserve TorchAO transformer quantization and layerwise FP8
   text-encoder storage, with BF16 computation and fixed official components.
-  Generic single-file imports, LoRA, other quantization and image-to-image remain
-  outside the supported scope.
+  Qwen also supports single-reference image editing through the same pipeline
+  and FP8 recipe. Preserve immutable input images and their run associations.
+  Multi-reference editing, masks, generic single-file imports, LoRA, other
+  quantization, and image editing with other profiles remain outside the scope.
 - Every generation request selects its GPU. Across the application, keep at
   most one model worker and one resident model. Reuse an identical model on
   the same GPU; otherwise finish the current task and fully unload the old

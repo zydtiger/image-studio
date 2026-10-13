@@ -57,6 +57,10 @@ export interface ErrorInfo {
 }
 
 export interface ProfileSpec {
+  generation_modes: GenerationMode[];
+  max_input_images: number;
+  max_input_bytes: number;
+  max_input_pixels: number;
   profile_id: ProfileId;
   label: string;
   default_steps: number;
@@ -73,6 +77,8 @@ export interface ProfileSpec {
 }
 
 export interface GenerationRequest {
+  mode?: GenerationMode;
+  input_image_ids?: string[];
   registration_id: string;
   gpu_uuid: string;
   prompt: string;
@@ -83,6 +89,17 @@ export interface GenerationRequest {
   guidance?: number | null;
   seed?: number | null;
   count: number;
+}
+
+export type GenerationMode = "text-to-image" | "image-edit";
+
+export interface InputImage {
+  input_id: string;
+  created_at: string;
+  width: number;
+  height: number;
+  size_bytes: number;
+  url: string;
 }
 
 export interface FrozenGpu {
@@ -239,6 +256,7 @@ export interface ArtifactView {
 }
 
 export interface RunSummary {
+  mode?: GenerationMode;
   run_id: string;
   created_at: string;
   status: RunStatus;
@@ -260,6 +278,8 @@ export interface RunProgressSnapshot {
 }
 
 export interface RunDetail {
+  mode?: GenerationMode;
+  input_images?: InputImage[];
   run_id: string;
   created_at: string;
   started_at?: string | null;

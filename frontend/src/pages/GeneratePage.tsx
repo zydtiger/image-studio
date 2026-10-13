@@ -89,7 +89,7 @@ export default function GeneratePage() {
   const runUpdateSeq = useRef(0);
   const [notices, setNotices] = useState<string[]>([]);
   const [gpuNeedsChoice, setGpuNeedsChoice] = useState(false);
-  const reuseApplied = useRef(false);
+  const reuseApplied = useRef<ReusePayload | undefined>(undefined);
   // Set once the user (or a resolved reuse payload) fixes the GPU; later
   // runtime arrivals must not override that choice.
   const userChoseGpu = useRef(false);
@@ -211,7 +211,7 @@ export default function GeneratePage() {
   // loaded successfully; failed queries leave the one-shot prefill
   // unconsumed so a later retry can still apply it.
   useEffect(() => {
-    if (reuseApplied.current || reuse === undefined) {
+    if (reuseApplied.current === reuse || reuse === undefined) {
       return;
     }
     if (
@@ -224,7 +224,7 @@ export default function GeneratePage() {
     ) {
       return;
     }
-    reuseApplied.current = true;
+    reuseApplied.current = reuse;
     const result = applyReuse(form, reuse, registrations, profiles, gpus);
     // A resolvable historical GPU counts as the effective choice.
     if (result.state.gpuUuid !== "") {
@@ -520,10 +520,6 @@ export default function GeneratePage() {
     <section className="page page--generate">
       <header className="page-header">
         <h1>Generate</h1>
-        <p>
-          Text-to-image with the global queue. Pick a registered model and a GPU
-          for this request; settings freeze at submission.
-        </p>
       </header>
 
       {notices.map((notice) => (

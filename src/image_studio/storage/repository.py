@@ -385,6 +385,45 @@ class Repository:
 
     # ----- runs and images ----------------------------------------------------
 
+    def create_input(self, image: schemas.InputImage) -> None:
+        with self._write() as conn:
+            conn.execute(
+                "INSERT INTO inputs VALUES (?, ?, ?, ?, ?)",
+                (
+                    image.input_id,
+                    image.created_at.isoformat(),
+                    image.width,
+                    image.height,
+                    image.size_bytes,
+                ),
+            )
+
+    def get_input(self, input_id: str) -> schemas.InputImage:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM inputs WHERE input_id = ?", (input_id,)
+            ).fetchone()
+        if row is None:
+            raise NotFoundError(f"unknown or expired input {input_id}")
+        return schemas.InputImage(**dict(row), url=f"/api/inputs/{input_id}")
+
+    def run_inputs(self, run_id: str) -> list[schemas.InputImage]:
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT input_id FROM run_inputs WHERE run_id = ? ORDER BY position", (run_id,)
+            ).fetchall()
+            return [self.get_input(row["input_id"]) for row in rows]
+
+    def expire_inputs(self, before: datetime) -> list[str]:
+        with self._write() as conn:
+            rows = conn.execute(
+                "DELETE FROM inputs WHERE created_at < ? AND NOT EXISTS"
+                " (SELECT 1 FROM run_inputs WHERE run_inputs.input_id = inputs.input_id)"
+                " RETURNING input_id",
+                (before.isoformat(),),
+            ).fetchall()
+        return [row[0] for row in rows]
+
     def create_run(self, spec: FrozenRunSpec) -> None:
         created = spec.created_at.isoformat()
         with self._write() as conn:
@@ -395,8 +434,8 @@ class Repository:
                 "INSERT INTO runs (run_id, queue_seq, created_at, status,"
                 " registration_id, repo_id, commit_sha, profile, dtype,"
                 " gpu_uuid, gpu_name, prompt, negative_prompt, width, height, steps,"
-                " guidance, initial_seed, image_count, sources)"
-                " VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " guidance, initial_seed, image_count, sources, mode)"
+                " VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     spec.run_id,
                     queue_seq,
@@ -417,7 +456,15 @@ class Repository:
                     spec.seeds[0],
                     spec.image_count,
                     _dump_sources(spec.model.sources),
+                    spec.mode,
                 ),
+            )
+            conn.executemany(
+                "INSERT INTO run_inputs (run_id, input_id, position) VALUES (?, ?, ?)",
+                [
+                    (spec.run_id, input_id, index)
+                    for index, input_id in enumerate(spec.input_image_ids)
+                ],
             )
             conn.executemany(
                 "INSERT INTO images (run_id, artifact_id, idx, seed, status)"
@@ -641,6 +688,10 @@ class Repository:
                 specs.append(
                     FrozenRunSpec(
                         run_id=row["run_id"],
+                        mode=row["mode"],
+                        input_image_ids=tuple(
+                            image.input_id for image in self.run_inputs(row["run_id"])
+                        ),
                         created_at=datetime.fromisoformat(row["created_at"]),
                         model=FrozenModel(
                             registration_id=row["registration_id"],
@@ -783,6 +834,7 @@ def _row_to_summary(row: sqlite3.Row, completed_count: int) -> schemas.RunSummar
         preview = schemas.artifact_id(min(completed_count, row["image_count"]))
     return schemas.RunSummary(
         run_id=row["run_id"],
+        mode=row["mode"],
         created_at=_parse_ts(row["created_at"]),
         status=RunStatus(row["status"]),
         favorite=bool(row["favorite"]),
@@ -818,6 +870,7 @@ def run_detail_row(
     )
     return schemas.RunDetail(
         run_id=str(row["run_id"]),
+        mode=row.get("mode", "text-to-image"),
         created_at=_parse_ts(str(row["created_at"])),
         started_at=_parse_ts(row.get("started_at")),
         finished_at=_parse_ts(row.get("finished_at")),

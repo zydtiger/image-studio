@@ -29,4 +29,5 @@ class PipelineAdapter[Loaded](Protocol):
         guidance: float,
         seed: int,
         on_step: Callable[[int], None],
+        input_paths: tuple[str, ...] = (),
     ) -> bytes: ...

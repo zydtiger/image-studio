@@ -5,6 +5,8 @@ import type { RunDetail } from "../api/types";
  * parameters on the Generate page.
  */
 export interface ReusePayload {
+  mode?: RunDetail["mode"];
+  inputImages?: RunDetail["input_images"];
   registrationId: string | null;
   repoId: string;
   prompt: string;
@@ -22,6 +24,8 @@ export interface ReusePayload {
 
 export function buildReusePayload(run: RunDetail): ReusePayload {
   return {
+    mode: run.mode ?? "text-to-image",
+    inputImages: run.input_images ?? [],
     registrationId: run.registration_id,
     repoId: run.repo_id,
     prompt: run.prompt,

@@ -208,6 +208,10 @@ class ProfileSpec(BaseModel):
     default_height: int
     dimension_multiple: int = DIMENSION_MULTIPLE
     dtype: str
+    generation_modes: tuple[Literal["text-to-image", "image-edit"], ...] = ("text-to-image",)
+    max_input_images: int = 0
+    max_input_bytes: int = 20 * 1024 * 1024
+    max_input_pixels: int = 16 * 1024 * 1024
 
 
 PROFILES: Final[Mapping[ProfileId, ProfileSpec]] = types.MappingProxyType(
@@ -215,6 +219,8 @@ PROFILES: Final[Mapping[ProfileId, ProfileSpec]] = types.MappingProxyType(
         ProfileId.QWEN_IMAGE_21: ProfileSpec(
             profile_id=ProfileId.QWEN_IMAGE_21,
             label="Qwen-Image-2.1",
+            generation_modes=("text-to-image", "image-edit"),
+            max_input_images=1,
             default_steps=40,
             min_steps=1,
             max_steps=100,
@@ -297,6 +303,8 @@ class GenerationRequest(BaseModel):
     """
 
     registration_id: str = Field(min_length=1)
+    mode: Literal["text-to-image", "image-edit"] = "text-to-image"
+    input_image_ids: tuple[str, ...] = ()
     gpu_uuid: str = Field(min_length=1)
     prompt: str = Field(min_length=1, max_length=PROMPT_MAX_LENGTH)
     negative_prompt: str | None = Field(default=None, max_length=PROMPT_MAX_LENGTH)
@@ -318,6 +326,17 @@ def validate_generation(request: GenerationRequest, profile: ProfileSpec) -> Non
     that makes wrap-around impossible.
     """
 
+    if request.mode not in profile.generation_modes:
+        raise ContractViolationError(
+            "this model does not support image editing", reason="unsupported_mode"
+        )
+    if request.mode == "image-edit":
+        if not 1 <= len(request.input_image_ids) <= profile.max_input_images:
+            raise ContractViolationError("select one input image", reason="input_count")
+    elif request.input_image_ids:
+        raise ContractViolationError(
+            "text-to-image does not accept input images", reason="unsupported_field"
+        )
     for field in ("width", "height"):
         if getattr(request, field) % profile.dimension_multiple:
             raise ContractViolationError(
@@ -449,6 +468,9 @@ class FrozenRunSpec(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     run_id: str
+    mode: Literal["text-to-image", "image-edit"] = "text-to-image"
+    input_image_ids: tuple[str, ...] = ()
+    input_paths: tuple[str, ...] = ()
     created_at: datetime
     model: FrozenModel
     gpu: FrozenGpu
@@ -810,6 +832,7 @@ class ArtifactView(BaseModel):
 
 class RunSummary(BaseModel):
     run_id: str
+    mode: Literal["text-to-image", "image-edit"] = "text-to-image"
     created_at: datetime
     status: RunStatus
     favorite: bool = False
@@ -829,8 +852,19 @@ class RunProgressSnapshot(BaseModel):
     total_steps: int = Field(ge=1)
 
 
+class InputImage(BaseModel):
+    input_id: str
+    created_at: datetime
+    width: int
+    height: int
+    size_bytes: int
+    url: str
+
+
 class RunDetail(BaseModel):
     run_id: str
+    mode: Literal["text-to-image", "image-edit"] = "text-to-image"
+    input_images: list[InputImage] = Field(default_factory=list)
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None

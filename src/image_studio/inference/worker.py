@@ -303,6 +303,7 @@ def _generate_one_image(
             guidance=task.guidance,
             seed=seed,
             on_step=on_step,
+            **({"input_paths": task.input_paths} if task.input_paths else {}),
         )
     except GenerationCancelled:
         cancel_requested, shutdown_requested = _drain_pending_commands(cmd_conn, task.run_id)
