@@ -159,7 +159,7 @@ def create_app(
             connection.close()
             lock.release()
 
-    app = FastAPI(title="Image Studio", version="0.1.3", lifespan=lifespan)
+    app = FastAPI(title="Image Studio", version="0.2.0", lifespan=lifespan)
     _install_error_handlers(app)
     _include_routers(app)
     _install_static(app)

@@ -17,12 +17,19 @@ For 0.1.0 these values already match; no dependency update is needed.
 
 Public compatibility surfaces are the documented CLI commands, flags and exit
 behavior, HTTP API, configuration keys, and persisted user data. Python modules
-are implementation details. Before 1.0, breaking changes to those surfaces bump
-the minor version; other changes bump the patch version. Identify breaking
-changes and data migration requirements in the notes. Adopting 1.0 requires an
-explicit compatibility commitment. From 1.0, use major versions for breaking
-changes, minor for compatible features, and patch for compatible fixes; prefer
-deprecation and a migration period before removing a public surface.
+are implementation details. Use project-specific milestone versioning throughout
+development, including the 0.x series:
+
+- Major: reserve for exceptionally large breaking changes, such as a fundamental
+  redesign with substantial migration requirements.
+- Minor: new features and capability expansions. Smaller breaking changes may
+  accompany a minor release, but must be called out explicitly.
+- Patch: backward-compatible fixes and maintenance, without new features.
+
+This is not strict Semantic Versioning: a minor release does not guarantee
+backward compatibility. Identify every breaking change and data migration
+requirement in the release notes. Prefer deprecation and a migration period
+before removing a public surface.
 
 [GitHub Releases](https://github.com/zydtiger/image-studio/releases) is the sole
 version history. Keep each entry brief: summarize user-visible changes and any
