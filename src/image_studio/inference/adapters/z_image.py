@@ -72,6 +72,7 @@ class ZImageAdapter(PipelineAdapter["ZImagePipeline"]):
         guidance: float,
         seed: int,
         on_step: StepCallback,
+        input_paths: tuple[str, ...] = (),
     ) -> bytes:
         """Generate one image and return its PNG bytes.
 
@@ -82,6 +83,8 @@ class ZImageAdapter(PipelineAdapter["ZImagePipeline"]):
         ``callback_on_step_end`` wiring progress and cooperative cancellation.
         """
 
+        if input_paths:
+            raise ValueError("Z-Image does not support image editing")
         import torch
 
         generator = torch.Generator(device="cuda").manual_seed(seed)

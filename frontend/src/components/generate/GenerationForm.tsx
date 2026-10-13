@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { InputImagePicker } from "./InputImagePicker";
+import { inputDimensions } from "./formState";
 import type {
   GpuInfo,
   ModelRegistration,
@@ -75,6 +78,7 @@ export function GenerationForm({
   onSelectRegistration,
   onSubmit,
 }: GenerationFormProps) {
+  const [uploading, setUploading] = useState(false);
   const readyRegistrations = registrations.filter(
     (entry) => entry.status === "ready",
   );
@@ -100,7 +104,7 @@ export function GenerationForm({
       className="generation-form"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        if (!uploading) onSubmit();
       }}
     >
       <SelectField
@@ -108,6 +112,7 @@ export function GenerationForm({
         label="Model"
         error={errors.registrationId}
         value={form.registrationId}
+        disabled={uploading}
         onChange={(event) => onSelectRegistration(event.target.value)}
         hint={
           readyRegistrations.length === 0
@@ -148,12 +153,67 @@ export function GenerationForm({
         ))}
       </SelectField>
 
+      {profileSpec?.generation_modes?.includes("image-edit") && (
+        <fieldset
+          className="generation-mode"
+          disabled={uploading || submitting}
+        >
+          <legend>Mode</legend>
+          {(["text-to-image", "image-edit"] as const).map((mode) => (
+            <label key={mode}>
+              <input
+                type="radio"
+                name="generation-mode"
+                value={mode}
+                checked={form.mode === mode}
+                onChange={() => onChange({ mode })}
+              />
+              <span>
+                {mode === "image-edit" ? "Image edit" : "Text to image"}
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {errors.mode && (
+        <p role="alert" className="notice notice--error">
+          {errors.mode}
+        </p>
+      )}
+      {form.mode === "image-edit" && profileSpec && (
+        <>
+          <InputImagePicker
+            image={form.inputImages[0]}
+            profile={profileSpec}
+            disabled={submitting}
+            onBusyChange={setUploading}
+            onChange={(image) =>
+              onChange({
+                inputImages: image ? [image] : [],
+                ...(image
+                  ? inputDimensions(image, profileSpec.dimension_multiple)
+                  : {}),
+              })
+            }
+          />
+          {errors.inputImages && (
+            <p role="alert" className="notice notice--error">
+              {errors.inputImages}
+            </p>
+          )}
+        </>
+      )}
+
       <TextField
         id="generation-prompt"
-        label="Prompt"
+        label={form.mode === "image-edit" ? "Edit instruction" : "Prompt"}
         error={errors.prompt}
         value={form.prompt}
-        placeholder="Describe the image…"
+        placeholder={
+          form.mode === "image-edit"
+            ? "Describe the changes..."
+            : "Describe the image…"
+        }
         multiline
         rows={4}
         maxLength={8000}
@@ -262,7 +322,11 @@ export function GenerationForm({
       ) : null}
 
       <div className="generation-form__actions">
-        <Button type="submit" variant="primary" disabled={submitting}>
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={submitting || uploading}
+        >
           {submitting ? "Submitting…" : "Generate"}
         </Button>
       </div>

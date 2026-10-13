@@ -136,7 +136,10 @@ class AnimaAdapter(PipelineAdapter[LoadedAnima]):
         guidance: float,
         seed: int,
         on_step: StepCallback,
+        input_paths: tuple[str, ...] = (),
     ) -> bytes:
+        if input_paths:
+            raise ValueError("Anima does not support image editing")
         import torch
         from diffusers import ClassifierFreeGuidance
 

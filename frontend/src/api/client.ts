@@ -42,7 +42,7 @@ export function isApiError(error: unknown): error is ApiError {
 }
 
 export interface ApiFetchOptions extends Omit<RequestInit, "body"> {
-  /** JSON-serializable request body; `undefined` sends no body. */
+  /** JSON-serializable or FormData body; `undefined` sends no body. */
   body?: unknown;
   /** API base path; defaults to "/api". */
   base?: string;
@@ -51,7 +51,7 @@ export interface ApiFetchOptions extends Omit<RequestInit, "body"> {
 const JSON_CONTENT_TYPE = "application/json";
 
 /**
- * Sends a JSON request and returns the decoded JSON response. Failed HTTP
+ * Sends JSON or multipart data and returns the decoded JSON response. Failed HTTP
  * responses throw an {@link ApiError}; aborted requests re-raise the
  * original `AbortError` untouched.
  */
@@ -64,8 +64,12 @@ export async function apiFetch<T>(
   headers.set("Accept", JSON_CONTENT_TYPE);
   let requestBody: BodyInit | undefined;
   if (body !== undefined) {
-    headers.set("Content-Type", JSON_CONTENT_TYPE);
-    requestBody = JSON.stringify(body);
+    if (body instanceof FormData) {
+      requestBody = body;
+    } else {
+      headers.set("Content-Type", JSON_CONTENT_TYPE);
+      requestBody = JSON.stringify(body);
+    }
   }
 
   let response: Response;

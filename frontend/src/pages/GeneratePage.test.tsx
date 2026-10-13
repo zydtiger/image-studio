@@ -59,6 +59,10 @@ import { RuntimeProvider } from "../state/runtime/RuntimeProvider";
 const PROFILES: ProfileSpec[] = [
   {
     profile_id: "z-image",
+    generation_modes: ["text-to-image"],
+    max_input_images: 0,
+    max_input_bytes: 20971520,
+    max_input_pixels: 16777216,
     label: "Z-Image",
     default_steps: 50,
     min_steps: 1,
@@ -73,6 +77,10 @@ const PROFILES: ProfileSpec[] = [
   },
   {
     profile_id: "z-image-turbo",
+    generation_modes: ["text-to-image"],
+    max_input_images: 0,
+    max_input_bytes: 20971520,
+    max_input_pixels: 16777216,
     label: "Z-Image-Turbo",
     default_steps: 9,
     min_steps: 1,

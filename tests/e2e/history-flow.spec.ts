@@ -76,6 +76,51 @@ test("retains completed, partial, and failed runs with clear states", async ({
     .toBe(true);
 });
 
+test("opens details from the whole card and keeps actions independent", async ({
+  page,
+}) => {
+  const card = page
+    .locator(".run-card")
+    .filter({ hasText: "a quiet harbor at dawn" });
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 768) await expect(page.locator(".app-sidebar")).toBeHidden();
+    for (const selector of [
+      ".run-card__prompt",
+      ".run-card__meta",
+      ".run-card__head",
+    ]) {
+      await card.locator(selector).scrollIntoViewIfNeeded();
+      const bounds = await card.locator(selector).boundingBox();
+      await expect
+        .poll(() =>
+          page.evaluate(
+            ({ x, y }) =>
+              document.elementFromPoint(x, y)?.closest("button")?.className,
+            { x: bounds!.x + 4, y: bounds!.y + bounds!.height / 2 },
+          ),
+        )
+        .toBe("run-card__preview");
+      await page.mouse.click(bounds!.x + 4, bounds!.y + bounds!.height / 2);
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.getByRole("button", { name: "Close dialog" }).click();
+    }
+    await card.getByRole("button", { name: /favorite/i }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await card.getByRole("button", { name: "Move run to Trash" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    await expect(
+      page.getByRole("dialog", { name: "Move run to Trash?" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    const open = card.getByRole("button", { name: /Open run from/ });
+    await open.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.getByRole("button", { name: "Close dialog" }).click();
+  }
+});
+
 test("searches prompts and filters favorites", async ({ page }) => {
   await page.getByLabel("Search prompts").fill("harbor");
   await page.getByRole("button", { name: "Search" }).click();

@@ -169,6 +169,14 @@ No Qwen weights or GPU inference are required for ordinary validation.
 
 ### Unsloth Qwen-Image-2.1 FP8
 
+Single-reference image editing has CPU coverage for uploads, validation,
+alpha/EXIF handling, immutable input references, metadata, retention through
+Trash, restart resumption, and Qwen adapter image arguments. The browser
+`image-edit-backend.spec.ts` exercises upload, editing, and result reuse against
+the built application and real API with fake providers. These checks do not
+verify real-GPU image editing, FP8 vision encoding, output quality, or peak VRAM.
+No GPU editing validation has been performed.
+
 TorchAO 0.18 restores the native per-row FP8 transformer checkpoint; its version is
 locked alongside the inference dependencies and recorded in generation metadata.
 The checkpoint format was checked against Unsloth revision

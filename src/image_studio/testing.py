@@ -352,7 +352,36 @@ def default_fake_repos() -> list[FakeRepoSpec]:
             license="apache-2.0",
             author="Tongyi-MAI",
         ),
+        qwen_fake_repo(),
     ] + anima_fake_repos()
+
+
+def qwen_fake_repo() -> FakeRepoSpec:
+    """Tiny Qwen metadata for development-only editing flows; no real weights."""
+    import json
+
+    files = {
+        name: value for name, value in _z_image_files().items() if not name.startswith("tokenizer/")
+    }
+    files["model_index.json"] = json.dumps(
+        {
+            "_class_name": "QwenImage21Pipeline",
+            "scheduler": ["diffusers", "FlowMatchEulerDiscreteScheduler"],
+            "text_encoder": ["transformers", "Qwen3VLForConditionalGeneration"],
+            "processor": ["transformers", "Qwen3VLProcessor"],
+            "transformer": ["diffusers", "QwenImage21Transformer2DModel"],
+            "vae": ["diffusers", "AutoencoderKLQwenImage21"],
+        }
+    )
+    for name in (
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "preprocessor_config.json",
+        "video_preprocessor_config.json",
+    ):
+        files[f"processor/{name}"] = "{}"
+    files["processor/chat_template.jinja"] = "{{ messages }}"
+    return FakeRepoSpec(repo_id="Qwen/Qwen-Image-2.1", files=files, sha="e" * 40)
 
 
 def anima_fake_repos() -> list[FakeRepoSpec]:

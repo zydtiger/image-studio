@@ -33,6 +33,10 @@ test("reports the resident model from the runtime status", async ({
     repo_id: "Tongyi-MAI/Z-Image",
   });
   fakeApi!.setResidentIdle(registration.id, "gpu-fake-1");
+  await page
+    .getByRole("region", { name: "Runtime status" })
+    .getByRole("button", { name: "Refresh" })
+    .click();
 
   await expect(page.getByText(/Tongyi-MAI\/Z-Image/).first()).toBeVisible({
     timeout: 5_000,

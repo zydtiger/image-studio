@@ -39,15 +39,15 @@ Use four English-language pages:
   token values, GPU information, and resident-model status. Configuration
   changes require restart; no live data migration in v1.
 
-V1 is text-to-image only. Exclude FLUX, arbitrary standalone checkpoints, LoRA, masks,
+Support text-to-image and Qwen single-reference image editing. Exclude FLUX, arbitrary standalone checkpoints, LoRA, masks,
 video, CPU offload, ComfyUI integration, account management, automatic updates,
-and shared cache deletion. Add image-to-image later as a distinct capability.
+and shared cache deletion. Multi-reference editing remains outside this release.
 
 ## Models and residency
 
 Use explicit built-in adapters: `ZImagePipeline` for Z-Image and
 `AnimaModularPipeline` for the two original-checkpoint Anima recipes, and
-`QwenImage21Pipeline` for Qwen-Image-2.1 text-to-image:
+`QwenImage21Pipeline` for Qwen-Image-2.1 text-to-image and image editing:
 
 | Profile | Default repo | Steps | Guidance | Negative prompt |
 | --- | --- | --- | --- | --- |
@@ -72,7 +72,15 @@ and VAE, and a FlowMatch scheduler. Validate those declarations and the processo
 tokenizer, image/video configuration and chat template in remote listings and local
 snapshots. Its profile fixes `true_cfg_scale=1.0` and enables the pipeline's KV
 cache. Reject mismatched profiles and dimensions before inference. Preserve the
-returned PNG's alpha channel; image editing remains outside the application scope.
+returned PNG's alpha channel. Editing passes a single RGBA condition image in
+`image`; the pinned pipeline has no `strength` or dedicated mask parameter.
+Generate exposes a profile-driven Text to image / Image edit selector, upload
+and drop target, input preview, and edit instruction. Input-based output size
+defaults fit the longest side to at most 1024, round each side to the profile's
+dimension multiple, and clamp to 256-2048; extreme aspect ratios therefore need
+manual adjustment. Submission freezes explicit width and height. The pipeline
+uses its default 1024 reference preprocessing resolution independently of output
+size. Switching modes does not change worker identity.
 
 The explicit `unsloth/Qwen-Image-2.1-FP8` recipe uses the same Qwen profile and
 adapter. Freeze its selected revision before queueing, and pin official supporting
@@ -286,7 +294,18 @@ not arbitrary client-provided filesystem paths. Keep tokens out of metadata.
 Allow an `outputs_dir` override while retaining the local SQLite database.
 For an overridden output root, place Trash within that root to permit same-filesystem
 moves. Keep artifact paths relative to their configured root. Provide restore,
-but no permanent-empty action in v1. Add `inputs/` only when image-to-image exists.
+but no permanent-empty action in v1.
+
+Input images live under the data directory's `inputs/`, independent of the
+output-root override. Upload PNG/JPEG/WebP files with a 20 MiB byte limit and
+16-megapixel decoded limit; reject animations, normalize EXIF orientation,
+strip embedded metadata, and preserve alpha in PNG storage. SQLite indexes
+immutable inputs and ordered run associations. The upload is persisted before
+submission; attachment and expiry are serialized. Never accept client filesystem
+paths. Result-to-input conversion creates an independent copy before editing.
+An input referenced by any run (including Trash) is retained. Unreferenced
+uploads older than 24 hours are cleaned on startup, upload, or submission;
+there is no background cleanup service. Restart rebuilds input paths from IDs.
 
 ## Planned interfaces
 

@@ -59,10 +59,10 @@ def _spec(
 
 def test_migrations_set_user_version(tmp_path: Path) -> None:
     connection = database.connect(tmp_path / "app.sqlite")
-    assert database.migrate(connection) == 3
-    assert database.schema_version(connection) == 3
+    assert database.migrate(connection) == 4
+    assert database.schema_version(connection) == 4
     database.migrate(connection)  # idempotent
-    assert database.schema_version(connection) == 3
+    assert database.schema_version(connection) == 4
 
 
 def test_create_run_persists_queued_run_and_pending_images(repo: Repository) -> None:
@@ -279,8 +279,8 @@ def test_migration_failure_rolls_back_completely_and_retries(tmp_path, monkeypat
 
     # restart/retry with the real scripts applies cleanly on the same file
     monkeypatch.setattr(database, "_migration_scripts", original)
-    assert database.migrate(connection) == 3
-    assert database.schema_version(connection) == 3
+    assert database.migrate(connection) == 4
+    assert database.schema_version(connection) == 4
     assert (
         connection.execute("SELECT name FROM sqlite_master WHERE name='runs'").fetchone()
         is not None
@@ -356,7 +356,7 @@ def test_sources_round_trip_and_migrations_preserve_old_records(repo, tmp_path, 
     old.execute(f"PRAGMA user_version={old_version}")
     for table in ("registrations", "downloads", "runs", "images"):
         for row in repo._connection.execute(f"SELECT * FROM {table}"):
-            data = {key: row[key] for key in row.keys() if key != "sources"}
+            data = {key: row[key] for key in row.keys() if key not in {"sources", "mode"}}
             if table in ("registrations", "runs"):
                 data["snapshot_path"] = "/old/cache/snapshot"
             if old_version == 2 and "sources" in row.keys():
@@ -372,7 +372,7 @@ def test_sources_round_trip_and_migrations_preserve_old_records(repo, tmp_path, 
                 f"INSERT INTO {table} ({columns}) VALUES ({placeholders})", list(data.values())
             )
     old.commit()
-    assert database.migrate(old) == 3
+    assert database.migrate(old) == 4
     new_cache = tmp_path / "relocated-hub"
     legacy = Repository(old, hub_cache_dir=new_cache)
     expected_sources = (
@@ -408,7 +408,7 @@ def test_sources_round_trip_and_migrations_preserve_old_records(repo, tmp_path, 
                 if "sources" in row:
                     row["sources"] = json.loads(row["sources"])
         assert migrated_rows == original_rows
-    assert database.migrate(old) == 3
+    assert database.migrate(old) == 4
     old.close()
 
 

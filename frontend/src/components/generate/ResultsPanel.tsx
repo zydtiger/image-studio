@@ -535,6 +535,20 @@ function RunDetailBody({
         </div>
       ) : null}
 
+      {run.input_images?.map((image) => (
+        <a
+          key={image.input_id}
+          href={image.url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <img
+            className="input-image-preview"
+            src={image.url}
+            alt="Input image"
+          />
+        </a>
+      ))}
       {run.images.length > 0 ? (
         <div className="results-grid">
           {run.images.map((artifact) => (
@@ -542,6 +556,7 @@ function RunDetailBody({
               key={artifact.artifact_id}
               runId={run.run_id}
               artifact={artifact}
+              editable
               onOpen={(target) => onOpenArtifact(target.artifact_id)}
             />
           ))}

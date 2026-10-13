@@ -92,6 +92,35 @@ seed arithmetic.
 
 ## 3. Runtime protocol
 
+### Image editing inputs
+
+`GET /api/profiles` exposes `generation_modes`, `max_input_images`,
+`max_input_bytes`, and `max_input_pixels`. Only Qwen-Image-2.1 enables
+`image-edit`, with exactly one input in this release, including its FP8 recipe.
+
+- `POST /api/inputs`: multipart upload with one `file`; returns 201 with
+  `input_id`, `created_at`, dimensions, stored byte count, and image URL.
+  Oversized requests return 413; invalid formats/content return 422 in the
+  normal error envelope. Accepted formats are PNG, JPEG and WebP, without animation.
+- `POST /api/inputs/from-artifact`: JSON `run_id` and `artifact_id`; copies a
+  completed result into independent input storage and returns the same shape.
+- `GET /api/inputs/{input_id}`: registered normalized PNG, or 404.
+- `POST /api/generations`: adds `mode` (default `text-to-image`) and ordered
+  `input_image_ids` (default empty). Reject unsupported modes, text-only requests
+  carrying images, missing inputs, and excessive input counts before persistence.
+- Run details and metadata include `mode` and ordered `input_images`; summaries
+  include `mode`. Reuse includes inputs as well as parameters.
+
+The coordinator resolves immutable input IDs to local paths before submission.
+`FrozenRunSpec` carries the mode, input IDs and runtime-only paths; `RunTask`
+passes paths to the worker. Only IDs and associations are stored in SQLite,
+and queued runs resolve them again on restart. The Qwen adapter decodes inputs
+inside the worker and supplies PIL images to the existing pipeline. Every image
+within a run uses the same input. Model residency, FIFO, seed ordering,
+cancellation, and artifact persistence retain their existing semantics.
+
+### Runtime methods
+
 Implemented by the inference subsystem against `schemas.Runtime`; consumed
 by the backend API layer. Method semantics:
 

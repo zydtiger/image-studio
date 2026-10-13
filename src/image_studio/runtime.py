@@ -26,6 +26,7 @@ from image_studio.schemas import (
     RunStatus,
 )
 from image_studio.storage.artifacts import ArtifactStore
+from image_studio.storage.inputs import InputStore
 from image_studio.storage.repository import (
     NotFoundError,
     Repository,
@@ -42,10 +43,13 @@ class RuntimeCoordinator:
         repository: Repository,
         artifacts: ArtifactStore,
         runtime: schemas.Runtime,
+        *,
+        inputs: InputStore | None = None,
     ) -> None:
         self._repository = repository
         self._artifacts = artifacts
         self._runtime = runtime
+        self._inputs = inputs
         self._progress: dict[str, schemas.RunProgressSnapshot] = {}
         self._queue_paused = False
         # Serializes (persist + runtime.submit) against resume_queue so the
@@ -65,6 +69,10 @@ class RuntimeCoordinator:
                     "generation queue is paused after a restart; resume it before "
                     "submitting new runs",
                 )
+            if self._inputs is not None:
+                with self._inputs.lock:
+                    self._inputs.cleanup()
+                    return self._submit_locked(request)
             return self._submit_locked(request)
 
     def _submit_locked(self, request: GenerationRequest) -> schemas.RunDetail:
@@ -114,10 +122,14 @@ class RuntimeCoordinator:
             )
         profile = schemas.PROFILES[registration.profile]
         schemas.validate_generation(request, profile)
+        input_paths = self._input_paths(request.input_image_ids)
 
         seeds = schemas.resolve_seeds(request.seed, request.count)
         spec = schemas.FrozenRunSpec(
             run_id=uuid.uuid4().hex,
+            mode=request.mode,
+            input_image_ids=request.input_image_ids,
+            input_paths=input_paths,
             created_at=schemas.utc_now(),
             model=schemas.FrozenModel(
                 registration_id=registration.id,
@@ -156,13 +168,21 @@ class RuntimeCoordinator:
     def get_run(self, run_id: str) -> schemas.RunDetail:
         row = self._repository.get_run(run_id)
         images = self._repository.get_images(run_id)
-        return run_detail_row(
+        detail = run_detail_row(
             row,
             images,
             cache_dir=self._repository.hub_cache_dir,
             queue_position=self._repository.run_queue_position(run_id),
             progress=self._progress.get(run_id),
         )
+        return detail.model_copy(update={"input_images": self._repository.run_inputs(run_id)})
+
+    def _input_paths(self, input_ids: tuple[str, ...]) -> tuple[str, ...]:
+        if not input_ids:
+            return ()
+        if self._inputs is None:
+            raise ImageStudioError(ErrorCode.INTERNAL, "input storage is unavailable")
+        return tuple(str(self._inputs.path(input_id)) for input_id in input_ids)
 
     def list_runs(
         self,
@@ -267,6 +287,9 @@ class RuntimeCoordinator:
                 if not self._repository.mark_paused_run_queued(spec.run_id):
                     continue
                 try:
+                    spec = spec.model_copy(
+                        update={"input_paths": self._input_paths(spec.input_image_ids)}
+                    )
                     problems = model_problems(
                         Path(spec.model.snapshot_path),
                         spec.model.repo_id,
@@ -458,6 +481,10 @@ class RuntimeCoordinator:
             "run_id": run_id,
             "created_at": row["created_at"],
             "status": payload_status,
+            "mode": row["mode"],
+            "input_images": [
+                image.model_dump(mode="json") for image in self._repository.run_inputs(run_id)
+            ],
             "model": {
                 "registration_id": row["registration_id"],
                 "repo_id": row["repo_id"],

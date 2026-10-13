@@ -8,10 +8,15 @@ import {
   buildRequest,
   validateForm,
   EMPTY_FORM,
+  inputDimensions,
   type GenerationFormState,
 } from "./formState";
 
 const Z_IMAGE: ProfileSpec = {
+  generation_modes: ["text-to-image"],
+  max_input_images: 0,
+  max_input_bytes: 20971520,
+  max_input_pixels: 16777216,
   profile_id: "z-image",
   label: "Z-Image",
   default_steps: 50,
@@ -60,6 +65,43 @@ const GPUS: GpuInfo[] = [
   { uuid: "gpu-0", name: "RTX A", index: 0, memory_total_bytes: null },
   { uuid: "gpu-1", name: "RTX B", index: 1, memory_total_bytes: null },
 ];
+
+it("validates image inputs and retains them when switching to an editing model", () => {
+  const spec: ProfileSpec = {
+    ...Z_IMAGE_TURBO,
+    profile_id: "qwen-image-2.1",
+    generation_modes: ["text-to-image", "image-edit"],
+    max_input_images: 1,
+  };
+  const image = {
+    input_id: "input-1",
+    created_at: "2026-10-13T00:00:00Z",
+    width: 2048,
+    height: 1024,
+    size_bytes: 10,
+    url: "/api/inputs/input-1",
+  };
+  const state = {
+    ...applyProfileDefaults(EMPTY_FORM, spec),
+    mode: "image-edit" as const,
+    registrationId: "qwen",
+    gpuUuid: "gpu-0",
+    prompt: "edit",
+  };
+  expect(validateForm(state, spec).errors.inputImages).toBeDefined();
+  const filled = { ...state, inputImages: [image] };
+  const { values, errors } = validateForm(filled, spec);
+  expect(errors).toEqual({});
+  expect(buildRequest(values, spec).input_image_ids).toEqual(["input-1"]);
+  expect(validateForm(filled, Z_IMAGE).errors.mode).toBeDefined();
+  expect(applyProfileDefaults(filled, spec).inputImages).toEqual([image]);
+  expect(applyProfileDefaults(filled, Z_IMAGE).mode).toBe("text-to-image");
+  expect(inputDimensions(image, 32)).toEqual({ width: "1024", height: "512" });
+  expect(inputDimensions({ ...image, width: 64, height: 96 }, 32)).toEqual({
+    width: "256",
+    height: "384",
+  });
+});
 
 describe("applyProfileDefaults", () => {
   it("applies capability defaults and drops unsupported fields", () => {
