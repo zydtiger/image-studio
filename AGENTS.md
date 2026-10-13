@@ -20,7 +20,9 @@ process, including live browser flows against the built frontend served by
 the real API. Inference dependencies are installed by default; real generation
 additionally requires model weights and a GPU. GPU tests remain opt-in.
 Anima-Turbo and Anima 2.9B have produced real default-parameter 1024 × 1024
-images on an RTX 5090; scope verification claims to the evidence in
+images on an RTX 5090. Unsloth Qwen-Image-2.1 FP8 has also generated real
+1024 × 1024 images through the live API on an RTX 5090, with download selection,
+worker reuse and Eject verified. Scope verification claims to the evidence in
 `docs/development.md`. Fake modes stay visibly identified as development-only.
 
 ## Product boundaries
@@ -30,7 +32,10 @@ images on an RTX 5090; scope verification claims to the evidence in
   `AnimaModularPipeline`, and Qwen-Image-2.1 through `QwenImage21Pipeline`.
   The Anima recipes pin every checkpoint and shared
   component revision; convert original denoiser weights only in memory.
-  Generic single-file imports, LoRA, quantization and image-to-image remain
+  Unsloth Qwen-Image-2.1 FP8 is an explicit multi-source recipe on the same
+  Qwen pipeline: preserve TorchAO transformer quantization and layerwise FP8
+  text-encoder storage, with BF16 computation and fixed official components.
+  Generic single-file imports, LoRA, other quantization and image-to-image remain
   outside the supported scope.
 - Every generation request selects its GPU. Across the application, keep at
   most one model worker and one resident model. Reuse an identical model on

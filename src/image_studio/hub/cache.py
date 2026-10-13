@@ -153,8 +153,14 @@ def _snapshot_incomplete(root: Path, repo_id: str | None = None) -> bool:
     snapshots of other architectures are listed without claiming validated
     completeness in either direction.
     """
+    from image_studio.hub import qwen_fp8
     from image_studio.hub.anima import RECIPES, make_sources, model_problems
 
+    if repo_id == qwen_fp8.REPO:
+        sources = qwen_fp8.make_sources(
+            root.parent.parent.parent, repo_id, root.name, ProfileId.QWEN_IMAGE_21
+        )
+        return bool(qwen_fp8.model_problems(root, repo_id, ProfileId.QWEN_IMAGE_21, sources))
     for profile, recipe in RECIPES.items():
         if repo_id == recipe.repo_id:
             sources = make_sources(root.parent.parent.parent, repo_id, root.name, profile)

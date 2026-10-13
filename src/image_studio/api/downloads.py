@@ -14,7 +14,7 @@ router = APIRouter()
 @router.post("/api/downloads", status_code=202)
 def create_download(request: Request, body: schemas.DownloadCreate) -> schemas.DownloadJob:
     app_state = state(request)
-    from image_studio.hub.anima import resolve_sources
+    from image_studio.hub.recipes import resolve_sources
 
     sources = resolve_sources(app_state.hub, body.repo_id, body.revision, body.profile)
     job = app_state.repository.create_download(

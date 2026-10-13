@@ -167,6 +167,51 @@ guidance controls and 32-pixel dimension increments. These tests use fake provid
 and do not verify real model loading, output quality or GPU memory requirements.
 No Qwen weights or GPU inference are required for ordinary validation.
 
+### Unsloth Qwen-Image-2.1 FP8
+
+TorchAO 0.18 restores the native per-row FP8 transformer checkpoint; its version is
+locked alongside the inference dependencies and recorded in generation metadata.
+The checkpoint format was checked against Unsloth revision
+`bb21a8ba7f0371c19ad1f72c82a5e8fc10f39939`. The download queue freezes the selected
+Unsloth revision and uses official Qwen supporting components pinned to
+`d26bb61231c349cf6b7896fa83353113880e1ba3`.
+
+CPU tests verify exact download selection, automatic registration, missing shared
+components, symlinked cache paths, incompatible profiles, TorchAO tensor/scales
+round trips, strict loading of tiny real Qwen components, and a tiny text-encoder
+forward that restores FP8 storage after BF16 computation. These do not establish
+full-model GPU compatibility, output quality, performance, or peak VRAM usage.
+
+After downloading through the application and explicitly selecting an idle GPU,
+the opt-in test uses local cache files only:
+
+```sh
+IMAGE_STUDIO_TEST_GPU=GPU-<uuid> uv run --locked \
+  pytest -q -m gpu tests/gpu/test_real_qwen_fp8.py
+```
+
+It generates two 1024 × 1024 images at 40 steps and guidance 1.0, checks progress,
+nonblank output, resident-worker reuse and Eject, then releases the worker.
+
+On 2026-10-13, a separate live HTTP API validation used the real Hub, download
+engine, supervisor and worker with an isolated application database and the
+shared Hugging Face cache. It downloaded exactly the recipe's 18 files
+(17,884,287,771 bytes) in about 156 seconds, automatically registered the model
+as ready, and generated two 1024 × 1024 RGBA PNGs on an RTX 5090 at 40 steps,
+guidance 1.0 and seeds 12345/12346. Both images showed coherent watercolor
+sailboat scenes. The same GPU worker PID served both requests, remained idle
+with the model resident between them, and exited after explicit Eject.
+
+Observed submission-to-completion times, including polling latency, were
+20.49 seconds for the first request (including model loading) and 14.38 seconds
+for the second. GPU memory sampled approximately every two seconds reached
+25,104 MiB and returned to 4 MiB after Eject; this sampled maximum is not a
+precise allocator peak. No files outside the selected recipe appeared in either
+new snapshot. This is functional evidence for this GPU, model revision and
+resolution, not a speed/quality benchmark or proof of other GPUs or resolutions.
+The stack was torch 2.14.0+cu130, torchvision 0.29.0+cu130, the pinned Diffusers
+0.41.0.dev0 commit, Transformers 5.17.0, Accelerate 1.15.0 and TorchAO 0.18.0.
+
 ## Contributions and publication
 
 Read the repository's [contribution contract](../AGENTS.md) before making

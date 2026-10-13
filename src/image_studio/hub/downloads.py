@@ -165,7 +165,7 @@ class DownloadEngine:
             )
 
     def _transfer_sources(self, job) -> None:
-        from image_studio.hub.anima import model_problems
+        from image_studio.hub.recipes import model_problems
 
         selected = []
         for source in job.sources:
