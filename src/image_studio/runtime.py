@@ -17,8 +17,8 @@ from datetime import datetime
 from pathlib import Path
 
 from image_studio import schemas
-from image_studio.hub.anima import model_problems
 from image_studio.hub.cache import problem_codes
+from image_studio.hub.recipes import model_problems
 from image_studio.schemas import (
     ErrorCode,
     GenerationRequest,

@@ -17,6 +17,13 @@ class QwenImageAdapter(PipelineAdapter["QwenImage21Pipeline"]):
     def load_pipeline(
         self, snapshot_path: str, dtype: str, profile: ProfileId, sources: tuple[ModelSource, ...]
     ) -> tuple[QwenImage21Pipeline, str]:
+        from image_studio.hub.qwen_fp8 import REPO
+
+        if sources and sources[0].repo_id == REPO:
+            from image_studio.inference.adapters.qwen_fp8 import load_pipeline
+
+            return load_pipeline(snapshot_path, dtype, sources)
+
         from diffusers import QwenImage21Pipeline
 
         from image_studio.hub.cache import snapshot_weight_variant

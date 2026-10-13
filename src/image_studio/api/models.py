@@ -7,9 +7,9 @@ from fastapi import APIRouter, Request, Response
 from image_studio import schemas
 from image_studio.api import state
 from image_studio.hub import cache as hub_cache
-from image_studio.hub.anima import make_sources, model_problems
 from image_studio.hub.client import DEFAULT_SEARCH_LIMIT
 from image_studio.hub.compatibility import check_compatibility
+from image_studio.hub.recipes import make_sources, model_problems
 from image_studio.schemas import ErrorCode, ImageStudioError
 
 router = APIRouter()

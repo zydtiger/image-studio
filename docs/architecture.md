@@ -74,6 +74,24 @@ snapshots. Its profile fixes `true_cfg_scale=1.0` and enables the pipeline's KV
 cache. Reject mismatched profiles and dimensions before inference. Preserve the
 returned PNG's alpha channel; image editing remains outside the application scope.
 
+The explicit `unsloth/Qwen-Image-2.1-FP8` recipe uses the same Qwen profile and
+adapter. Freeze its selected revision before queueing, and pin official supporting
+components to `d26bb61231c349cf6b7896fa83353113880e1ba3`. Its `ModelSource` manifests
+select only the two FP8 checkpoints and the required official configuration,
+processor, scheduler and VAE files. Reuse the official Hub cache without exporting
+converted weights. Registration, cache inspection and submission validate both
+sources, including through a symlinked cache root. The full source identity is
+already part of the worker reuse key and generation metadata.
+
+The worker reconstructs the transformer's TorchAO `Float8Tensor` weights from
+safetensors data and metadata. It strictly assigns both components into empty
+model skeletons with real initialization buffers. Text-encoder leaves already
+stored in FP8 get Diffusers casting hooks for BF16 computation; dense embeddings
+and normalization layers retain their saved precision. Inject both components
+into `QwenImage21Pipeline` with local-only loading. Device movement must not cast
+the whole pipeline back to BF16. No pickle, remote Python, runtime model downloads,
+automatic precision fallback, or general quantization UI is introduced.
+
 Run one API process, one global FIFO generation queue, and at most one resident
 inference worker. Every request specifies a GPU UUID. The API process never owns
 CUDA model tensors. Downloads use a separate single-task queue.

@@ -68,6 +68,42 @@ def check_compatibility(
         "Base or Turbo explicitly.",
     ]
 
+    from image_studio.hub import qwen_fp8
+
+    if repo_id == qwen_fp8.REPO:
+        try:
+            base = api.model_info(
+                qwen_fp8.BASE_REPO, revision=qwen_fp8.BASE_COMMIT, files_metadata=True
+            )
+        except Exception as exc:
+            raise translate_hub_error(exc) from exc
+        if not commit_sha:
+            findings.append("could not resolve FP8 revision")
+        if base.sha != qwen_fp8.BASE_COMMIT:
+            findings.append("Qwen component revision mismatch")
+        for repo, required, available in (
+            (repo_id, qwen_fp8.WEIGHT_FILES, set(files)),
+            (qwen_fp8.BASE_REPO, qwen_fp8.BASE_FILES, {item.rfilename for item in base.siblings}),
+        ):
+            findings.extend(
+                f"{repo}/{name} is missing" for name in required if name not in available
+            )
+        return schemas.CompatibilityReport(
+            repo_id=repo_id,
+            revision=revision or "main",
+            commit_sha=commit_sha,
+            structurally_compatible=not findings,
+            selectable_profiles=[ProfileId.QWEN_IMAGE_21] if not findings else [],
+            findings=findings,
+            notes=[
+                "FP8 transformer and text encoder with pinned official Qwen components; "
+                "downloads exclude INT8 and full-precision transformer/text-encoder weights.",
+                "Requires an NVIDIA GPU with FP8 support; computation uses bfloat16.",
+                "Text-to-image with fixed guidance 1.0; dimensions must be multiples of 32.",
+                "Structural compatibility does not guarantee output quality.",
+            ],
+        )
+
     from image_studio.hub.anima import RECIPES, SHARED_COMMIT, SHARED_FILES, SHARED_REPO
 
     for profile, recipe in RECIPES.items():
